@@ -12,6 +12,7 @@
 * [National Lung Screening Trial] (https://wiki.cancerimagingarchive.net/display/NLST/National+Lung+Screening+Trial)
 * [Automatic Nodule Detection 2009] (https://anode09.grand-challenge.org/)
 * [SPIE-AAPM Lung CT Challenge] (https://wiki.cancerimagingarchive.net/display/Public/SPIE-AAPM+Lung+CT+Challenge)
+* [Computed Tomography Emphysema Database] (http://image.diku.dk/emphysema_database/)
 
 
 
