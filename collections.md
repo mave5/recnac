@@ -27,3 +27,8 @@
 * [Automatic Lung Cancer Detection and Diagnosis Using Hand Crafted and Deep Learning Features] (http://crcv.ucf.edu/REU/2016/Richey/Winona-Final%20Paper.pdf)
 * [Using Deep Learning for Pulmonary Nodule Detection & Diagnosis] (http://aisel.aisnet.org/cgi/viewcontent.cgi?article=1109&context=amcis2016)
 * [lung Cancer Detection nETScan Images:A Review on the Analysis Techniques] (https://pdfs.semanticscholar.org/9f6d/3420bef7d86233f1b18c3799e8eba613d645.pdf)
+
+
+
+#### Misc
+* [Efficient overfitting of training data (Kaggle Bowl 2017)] (https://markv.nl/blag/efficient-overfitting-of-training-data-kaggle-bowl)
