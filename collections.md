@@ -32,3 +32,4 @@
 
 #### Misc
 * [Efficient overfitting of training data (Kaggle Bowl 2017)] (https://markv.nl/blag/efficient-overfitting-of-training-data-kaggle-bowl)
+* [Overfitting the leaderboard] (https://www.kaggle.com/caseyftw/data-science-bowl-2017/overfitting-the-leaderboard/discussion)
