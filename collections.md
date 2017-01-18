@@ -31,6 +31,7 @@
 
 
 #### Misc codes
+* [Keras vs Cancer] (https://www.kaggle.com/zfturbo/data-science-bowl-2017/keras-vs-cancer/code)
 * [DICOM to 3D numpy arrays] (https://www.kaggle.com/rmchamberlain/data-science-bowl-2017/dicom-to-3d-numpy-arrays/discussion)
 * [Exploratory Data Analysis] (https://www.kaggle.com/anokas/data-science-bowl-2017/exploratory-data-analysis/discussion)
 * [Efficient overfitting of training data (Kaggle Bowl 2017)] (https://markv.nl/blag/efficient-overfitting-of-training-data-kaggle-bowl)
