@@ -38,5 +38,8 @@
 * [Overfitting the leaderboard] (https://www.kaggle.com/caseyftw/data-science-bowl-2017/overfitting-the-leaderboard/discussion)
 
 
+#### Videos
+* [DSB 2017 Case Review] (https://www.youtube.com/watch?v=-XUKq3B4sdw)
+
 #### visualization tools
 * [slicedrop] (http://slicedrop.com/)
