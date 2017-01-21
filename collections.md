@@ -23,6 +23,7 @@
 
 
 #### Articles
+* [Probability of Cancer in Pulmonary Nodules Detected on First Screening CT] (http://www.nejm.org/doi/pdf/10.1056/NEJMoa1214726)
 * [Deep Learning for the Classification of Lung Nodules] (https://arxiv.org/abs/1611.06651)
 * [Automatic Lung Cancer Detection and Diagnosis Using Hand Crafted and Deep Learning Features] (http://crcv.ucf.edu/REU/2016/Richey/Winona-Final%20Paper.pdf)
 * [Using Deep Learning for Pulmonary Nodule Detection & Diagnosis] (http://aisel.aisnet.org/cgi/viewcontent.cgi?article=1109&context=amcis2016)
