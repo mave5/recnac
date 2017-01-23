@@ -23,6 +23,7 @@
 
 
 #### Articles
+* [Lung Nodule Detection using 3D Convolutional Neural Networks Trained on Weakly Labeled Data] (http://www.public.asu.edu/~ranirudh/papers/spie2016.pdf)
 * [Lung Nodule Detection and Classification] (http://cs231n.stanford.edu/reports2016/313_Report.pdf)
 * [Off-the-shelf convolutional neural network features for pulmonary nodule detection in computed tomography scans] (http://ieeexplore.ieee.org/document/7163869/)
 * [Automatic classification of pulmonary peri-fissural nodules in computed tomography using an ensemble of 2D views and a convolutional neural network out-of-the-box.] (https://www.ncbi.nlm.nih.gov/pubmed/26458112)
