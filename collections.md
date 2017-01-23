@@ -23,6 +23,7 @@
 
 
 #### Articles
+* [Automatic classification of pulmonary peri-fissural nodules in computed tomography using an ensemble of 2D views and a convolutional neural network out-of-the-box.] (https://www.ncbi.nlm.nih.gov/pubmed/26458112)
 * [Pulmonary Nodule Detection in CT Images: False Positive Reduction Using Multi-View Convolutional Networks.] (https://www.ncbi.nlm.nih.gov/pubmed/26955024)
 * [Towards automatic pulmonary nodule management in lung cancer screening with deep learning] (https://arxiv.org/abs/1610.09157)
 * [Probability of Cancer in Pulmonary Nodules Detected on First Screening CT] (http://www.nejm.org/doi/pdf/10.1056/NEJMoa1214726)
