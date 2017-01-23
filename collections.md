@@ -23,6 +23,8 @@
 
 
 #### Articles
+* [Deep Convolutional Neural Networks for Computer-Aided Detection: CNN Architectures, Dataset Characteristics and Transfer Learning] (https://arxiv.org/pdf/1602.03409.pdf)
+* [Lung Nodule Classification Based on Deep Convolutional Neural Networks] (http://www.liv.ic.unicamp.br/~juliomb/resources/2016-lnc-ciarp.pdf)
 * [Recurrent Convolutional Networks for Pulmonary Nodule Detection in CT Imaging] (https://arxiv.org/pdf/1609.09143.pdf)
 * [Lung Nodule Detection using 3D Convolutional Neural Networks Trained on Weakly Labeled Data] (http://www.public.asu.edu/~ranirudh/papers/spie2016.pdf)
 * [Lung Nodule Detection and Classification] (http://cs231n.stanford.edu/reports2016/313_Report.pdf)
