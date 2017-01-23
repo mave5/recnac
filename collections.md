@@ -23,6 +23,7 @@
 
 
 #### Articles
+* [Towards automatic pulmonary nodule management in lung cancer screening with deep learning] (https://arxiv.org/abs/1610.09157)
 * [Probability of Cancer in Pulmonary Nodules Detected on First Screening CT] (http://www.nejm.org/doi/pdf/10.1056/NEJMoa1214726)
 * [Deep Learning for the Classification of Lung Nodules] (https://arxiv.org/abs/1611.06651)
 * [Automatic Lung Cancer Detection and Diagnosis Using Hand Crafted and Deep Learning Features] (http://crcv.ucf.edu/REU/2016/Richey/Winona-Final%20Paper.pdf)
