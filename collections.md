@@ -23,6 +23,7 @@
 
 
 #### Articles
+* [3D Convolutional Neural Networks for Human Action Recognition]  (http://machinelearning.wustl.edu/mlpapers/paper_files/icml2010_JiXYY10.pdf)
 * [Deep Convolutional Neural Networks for Computer-Aided Detection: CNN Architectures, Dataset Characteristics and Transfer Learning] (https://arxiv.org/pdf/1602.03409.pdf)
 * [Lung Nodule Classification Based on Deep Convolutional Neural Networks] (http://www.liv.ic.unicamp.br/~juliomb/resources/2016-lnc-ciarp.pdf)
 * [Recurrent Convolutional Networks for Pulmonary Nodule Detection in CT Imaging] (https://arxiv.org/pdf/1609.09143.pdf)
