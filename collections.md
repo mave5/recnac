@@ -41,6 +41,7 @@
 
 
 #### Misc codes
+* [Lung Segmentation using Watershed] (https://www.kaggle.com/ankasor/data-science-bowl-2017/improved-lung-segmentation-using-watershed/discussion)
 * [Keras vs Cancer] (https://www.kaggle.com/zfturbo/data-science-bowl-2017/keras-vs-cancer/code)
 * [DICOM to 3D numpy arrays] (https://www.kaggle.com/rmchamberlain/data-science-bowl-2017/dicom-to-3d-numpy-arrays/discussion)
 * [Exploratory Data Analysis] (https://www.kaggle.com/anokas/data-science-bowl-2017/exploratory-data-analysis/discussion)
