@@ -19,6 +19,8 @@
 * classifier for cancer detection: Random Forest and XGBoost
 * python code: LUNA_mask_extraction.py for converting images and nodules masks into npy files
   numpy file names format: images_xxxx_yyyy.npy, where xxxx: patient number, yyyy: slice number
+* run 20 epochs with a training set size of 320 and batch size of 2 in about an hour. We started obtaing reasonable nodule mask predictions after about 3 hours of training once the reported loss value approached 0.3.
+
 
 
 
