@@ -17,7 +17,8 @@
 * train U-net on ROI images and corresponding mask for segmentation
 * create a list of features for feature engineering
 * classifier for cancer detection: Random Forest and XGBoost
-
+* python code: LUNA_mask_extraction.py for converting images and nodules masks into npy files
+  numpy file names format: images_xxxx_yyyy.npy, where xxxx: patient number, yyyy: slice number
 
 
 
