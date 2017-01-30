@@ -7,6 +7,8 @@
 * 198 subjects in test set with no label to be predicted
 * around 26 percent have cancer
 * number of slices per subject: min: 94, max: 541, avg: 179, std:67.0
+* average execution time for dicom to numpy: 10 sec/subject
+* average execution time for lung mask extraction: 50 sec/subject
 
 
 
