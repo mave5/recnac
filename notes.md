@@ -1,6 +1,15 @@
 ## Notes
 ---------
 
+### DSB 2017 dataset
+* Total data: 1595 subjects
+* 1397 subjects in trainig set, there is label (0/1) for them
+* 198 subjects in test set with no label to be predicted
+* around 26 percent have cancer
+* number of slices per subject: min: 94, max: 541, avg: 179, std:67.0
+
+
+
 
 
 #### Notes from Booz Allen Hamilton tutorial
