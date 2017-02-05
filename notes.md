@@ -1,7 +1,19 @@
 ## Notes
 ---------
 
-### DSB 2017 dataset
+#### LUNA2016 dataset
+* data is in 10 dirs namely: subset0 to subset9
+* nodule annotations are in CSVFILES/annotations.csv
+* LUNA_mask_extraction.py: obtain images_xxxx_yyyyy.npy and nodules masks_sunb_slnb.npy as numpy files
+  sunb is subject number and slnb is slice number.
+* nodule masks are created from x,y,z coordinates and diameter values in CSVFILES/annotations.csv 
+* 
+
+
+
+
+
+#### DSB 2017 dataset
 * Total data: 1595 subjects
 * 1397 subjects in trainig set, there is label (0/1) for them
 * 198 subjects in test set with no label to be predicted
@@ -31,7 +43,6 @@
 * python code: LUNA_mask_extraction.py for converting images and nodules masks into npy files
   numpy file names format: images_xxxx_yyyy.npy, where xxxx: patient number, yyyy: slice number
 * run 20 epochs with a training set size of 320 and batch size of 2 in about an hour. We started obtaing reasonable nodule mask predictions after about 3 hours of training once the reported loss value approached 0.3.
-
 
 
 
