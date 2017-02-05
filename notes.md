@@ -4,7 +4,7 @@
 #### LUNA2016 dataset
 * data is in 10 dirs namely: subset0 to subset9
 * nodule annotations are in CSVFILES/annotations.csv
-* LUNA_mask_extraction.py: obtain images_xxxx_yyyyy.npy and nodules masks_sunb_slnb.npy as numpy files
+* LUNA_mask_extraction.py: obtain images_sbnb_slnb.npy and nodules masks_sunb_slnb.npy as numpy files
   sunb is subject number and slnb is slice number.
 * nodule masks are created from x,y,z coordinates and diameter values in CSVFILES/annotations.csv 
 * 
