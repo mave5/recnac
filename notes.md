@@ -1,6 +1,13 @@
 ## Notes
 ---------
 
+
+### misc
+* nodule coordinates: (r,c,radius) or (y,x,radius)
+
+
+
+
 #### LUNA2016 dataset
 * data is in 10 dirs namely: subset0 to subset9
 * nodule annotations are in CSVFILES/annotations.csv
