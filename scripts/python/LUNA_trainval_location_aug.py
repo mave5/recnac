@@ -1,4 +1,4 @@
-from __future__ import print_function
+ #from __future__import print_function
 
 import numpy as np
 from keras.models import Model
@@ -9,6 +9,9 @@ from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras import backend as K
 from sklearn.externals import joblib
 from image import ImageDataGenerator
+#from augmentation import CustomImageDataGenerator
+#import augmentation
+#from augmentation import random_zoom, elastic_transform 
 #from keras.preprocessing.image import ImageDataGenerator
 import cv2
 import time
@@ -20,20 +23,26 @@ working_path = "./output/numpy/luna/allsubsets/"
 
 K.set_image_dim_ordering('th')  # Theano dimension ordering in this code
 
+# original data dimension
 img_rows = 512
 img_cols = 512
 
+# smoothing factor when applying dice
 smooth = 1.
 
 # batch size
-bs=8
+bs=16
 
-h,w=512,512
-experiment='coords'+'_hw_'+str(h)+'by'+str(w)
+# trained data dimesnsion
+h,w=256,256
+
+# exeriment name to record weights and scores
+experiment='coords_aug'+'_hw_'+str(h)+'by'+str(w)
 print ('experiment:', experiment)
 
-#seed = 2016
-#seed = np.random.randint(0, 999999)
+# seed point
+seed = 2016
+seed = np.random.randint(seed)
 
 # checkpoint
 weightfolder='./output/weights/'+experiment
@@ -43,6 +52,12 @@ if  not os.path.exists(weightfolder):
 
 # data augmentation
 augmentation=True
+
+# number of outputs
+nb_output=3
+
+# fast train
+fast_train=True
 
 #%%
 
@@ -77,6 +92,7 @@ def model(params):
     weights_path=params['weights_path']
     loss=params['loss']
     C=params['nb_filters']
+    nb_output=params['nb_output']
     
     model = Sequential()
     
@@ -98,7 +114,7 @@ def model(params):
     model.add(Dense(100, activation='relu'))
     #model.add(Dropout(0.1))
 
-    model.add(Dense(3, activation='sigmoid'))
+    model.add(Dense(nb_output, activation='sigmoid'))
     
     #load previous weights
     if weights_path:
@@ -118,6 +134,7 @@ def preprocess(X,Y,param_prep):
     w=param_prep['w']    
     crop=param_prep['crop']
     norm_type=param_prep['norm_type'] # normalization 
+    output=param_prep['output'] # output
     
     
     # center crop h*w
@@ -141,12 +158,12 @@ def preprocess(X,Y,param_prep):
         Y_r=np.zeros([N,C,h,w],dtype='uint8')
         for k1 in range(X.shape[0]):
             X_r[k1] = cv2.resize(X[k1,0], (w, h), interpolation=cv2.INTER_CUBIC)
-            Y_r[k1] = (cv2.resize(Y[k1,0], (w, h), interpolation=cv2.INTER_CUBIC)>0.5)
+            Y_r[k1] = cv2.resize(Y[k1,0], (w, h), interpolation=cv2.INTER_CUBIC)>0.5 # binary mask 
     else:
         X_r=X
         Y_r=Y
+
     
-    # normalization
     X_r=np.array(X_r,dtype='float32')
     if norm_type is 'global':
         X_r-=np.mean(X_r)
@@ -162,8 +179,34 @@ def preprocess(X,Y,param_prep):
     elif norm_type is 'scale':
         X_r-=np.min(X_r)
         X_r/=np.max(X_r)
-            
-    return X_r,Y_r
+    elif norm_type is 'minmax_bound':        
+        # normalization
+        MIN_BOUND = -1000.0
+        MAX_BOUND = 400.0
+        
+        X_r = (X_r - MIN_BOUND) / (MAX_BOUND - MIN_BOUND)
+        X_r[X_r>1] = 1.
+        X_r[X_r<0] = 0.
+
+    # center coordinates and diameter
+    y_r=mask2coord(Y_r)            
+    
+    if output is 'mask':    
+        return X_r,Y_r
+    elif output is 'coords':
+        return X_r,y_r
+
+
+####### normalization
+MIN_BOUND = -1000.0
+MAX_BOUND = 400.0
+    
+def normalize(image):
+    image = (image - MIN_BOUND) / (MAX_BOUND - MIN_BOUND)
+    image[image>1] = 1.
+    image[image<0] = 0.
+    return image
+
 
 # calcualte dice
 def calc_dice(X,Y,d=0):
@@ -193,6 +236,7 @@ def calc_dice(X,Y,d=0):
 def grays_to_RGB(img):
     # turn 2D grayscale image into grayscale RGB
     return np.dstack((img, img, img))
+
 
 
 def image_with_mask(img, mask,color=(0,255,0)):
@@ -261,8 +305,6 @@ def disp_img_2masks(img,mask1,mask2,r=1,c=1,d=0,indices=None):
     plt.show()            
     return n1        
 
-
-
 def array_stats(X):
     X=np.asarray(X)
     print ('array shape: ',X.shape, X.dtype)
@@ -270,28 +312,19 @@ def array_stats(X):
     print ('min: {}, max: {}, avg: {:.3}, std:{:.3}'.format( np.min(X),np.max(X),np.mean(X),np.std(X)))
 
 
-MIN_BOUND = -1000.0
-MAX_BOUND = 400.0
-    
-def normalize(image):
-    image = (image - MIN_BOUND) / (MAX_BOUND - MIN_BOUND)
-    image[image>1] = 1.
-    image[image<0] = 0.
-    return image
-
-def zero_center(image):
-    image = image - PIXEL_MEAN
-    return image
-
 # convert mask to coordinates
 def mask2coord(Y):
-    N=Y.shape[0]
+    N,C,H,W=Y.shape
     coords=np.zeros((N,3))
     for k in range(N):
         region=measure.regionprops(Y[k,0])
         if len(region)>0:
             (x,y),radius = cv2.minEnclosingCircle(region[0].coords)
             coords[k,:]=[x,y,radius]
+    R=100
+    #print np.max(coords[:,2])
+    coords=coords/[H,W,R]
+    coords=coords[:,:nb_output]
     return coords
 
 
@@ -335,62 +368,71 @@ def iterate_minibatches(inputs1 , targets,  batchsize, shuffle=True, augment=Tru
         x=inputs1
         y=targets
 
-    yield x, np.array(y, dtype=np.uint8)         
-    #return x, np.array(y, dtype=np.uint8)         
-
-
-#%%
-
-print('-'*30)
-print('Loading and preprocessing train data...')
-print('-'*30)
-X_train = joblib.load(working_path+"trainX.joblib").astype('float32')
-X_train=normalize(X_train)
-Y_train = joblib.load(working_path+"trainY.joblib")
-array_stats(X_train)
-array_stats(Y_train)
+    #yield x, np.array(y, dtype=np.uint8)         
+    return x, np.array(y, dtype=np.uint8)         
 
 # porition
 #N=100
 #n1=np.random.randint(X_train.shape[0],size=N)
 #X_train=X_train[n1]
 #Y_train=Y_train[n1]
-
-X_test = joblib.load(working_path+"testX.joblib").astype('float32')
-X_test=normalize(X_test)
-Y_test = joblib.load(working_path+"testY.joblib")
-array_stats(X_test)
-array_stats(Y_test)
+ #save fast train data
+#joblib.dump(X_train[n1], working_path+"fast_trainX.joblib")
+#joblib.dump(Y_train[n1], working_path+"fast_trainY.joblib")
 
 #N=50
 #n1=np.random.randint(X_test.shape[0],size=N)
 #X_test=X_test[n1]
 #Y_test=Y_test[n1]
 
+#%%
+
+print('-'*30)
+print('Loading and preprocessing train data...')
+print('-'*30)
+
+if fast_train is False:
+    X_train = joblib.load(working_path+"trainX.joblib")#.astype('float32')
+    Y_train = joblib.load(working_path+"trainY.joblib")
+    array_stats(X_train)
+    array_stats(Y_train)
+else:
+    X_train = joblib.load(working_path+"fast_trainX.joblib")#.astype('float32')
+    Y_train = joblib.load(working_path+"fast_trainY.joblib")
+    array_stats(X_train)
+    array_stats(Y_train)
+    
+# load test data
+X_test = joblib.load(working_path+"testX.joblib")#.astype('float32')
+Y_test = joblib.load(working_path+"testY.joblib")
+array_stats(X_test)
+array_stats(Y_test)
 
 # pre-processing 
 param_prep={
     'h': h,
     'w': w,
     'crop'    : None,
-    'norm_type' : 'local',
+    'norm_type' : 'minmax_bound',
+    'output' : 'coords',
 }
 
-#X_train,Y_train=preprocess(X_train,Y_train,param_prep)
-#array_stats(X_train)
-#array_stats(Y_train)
+#X_train_aug,Y_train_aug=preprocess(X_train,Y_train,param_prep)
+#array_stats(X_train_aug)
+#array_stats(Y_train_aug)
 #n1=disp_img_2masks(X_train,Y_train,None,3,4,True)
 
-#X_test,Y_test=preprocess(X_test,Y_test,param_prep)
-#array_stats(X_test)
-#array_stats(Y_test)
+#X_test_aug,Y_test_aug=preprocess(X_test,Y_test,param_prep)
+#array_stats(X_test_aug)
+#array_stats(Y_test_aug)
 
-#n1=disp_img_2masks(X_test,Y_test,None,4,5,True)
+#n1=disp_img_2masks(X_test_aug,Y_test_aug,None,3,4,True)
+
 #%%
 # convert masks to coordinates
-y_train=mask2coord(Y_train)/(h*1.)
-y_test=mask2coord(Y_test)/(h*1.)
-        
+#y_train_aug=mask2coord(Y_train_aug)
+#y_test=mask2coord(Y_test)
+
 #%%
 print('-'*30)
 print('Creating and compiling model...')
@@ -407,9 +449,9 @@ params_train={
     'loss': 'mean_squared_error',
     #'loss': 'dice',
     'nbepoch': 1000,
-    'num_labels': 3,
+    'nb_output': nb_output,
     'nb_filters': 8,    
-    'max_patience': 20    
+    'max_patience': 50    
         }
 
 model = model(params_train)
@@ -453,28 +495,18 @@ for e in range(params_train['nbepoch']):
     seed = np.random.randint(0, 999999)
 
     # data augmentation
-    batches = 0
-    for X_batch,Y_batch in iterate_minibatches( X_train, Y_train, bs, shuffle=False):
-        y_batch=mask2coord(Y_batch)/(h*1.)
+    for k in range(0,X_train.shape[0],bs):
+        X_batch=X_train[k:k+bs]
+        Y_batch=Y_train[k:k+bs]
+        X_batch,Y_batch=iterate_minibatches(X_batch,Y_batch,X_batch.shape[0],shuffle=False,augment=True)
+        # preprocess 
+        X_batch,y_batch=preprocess(X_batch,Y_batch,param_prep)
         model.fit(X_batch, y_batch, nb_epoch=1, batch_size=bs,verbose=0,shuffle=True)
-        batches += 1
-        if batches >= len(X_train) / bs:
-            # we need to break the loop by hand because
-            # the generator loops indefinitely
-            break
     
-    # normalize        
-    #X_train_aug,Y_train_aug=preprocess(X_train_aug,Y_train_aug,param_prep)
-        
-    # convert masks to coordinates
-    #y_train_aug=mask2coord(Y_train_aug)/(h*1.)
-
-    # fit model
-    #model.fit(X_train_aug, y_train_aug, validation_data=(X_test, y_test), nb_epoch=1, batch_size=bs,verbose=0,shuffle=True,callbacks=[checkpoint])
     
     # evaluate on test and train data
-    score_test=model.evaluate(X_test, y_test,verbose=0)
-    score_train=model.evaluate(X_train, y_train,verbose=0)
+    score_test=model.evaluate(*preprocess(X_test,Y_test,param_prep),verbose=0)
+    score_train=model.evaluate(*preprocess(X_train,Y_train,param_prep),verbose=0)
     if params_train['loss']=='dice': 
         score_test=score_test[1]   
         score_train=score_train[1]
@@ -558,34 +590,60 @@ print('-'*30)
 # load best weights
 model.load_weights(path2weights)
 
+# pre-processing 
+param_prep={
+    'h': h,
+    'w': w,
+    'crop'    : None,
+    'norm_type' : 'minmax_bound',
+    'output' : 'coords',
+}
+
+score_test=model.evaluate(*preprocess(X_test,Y_test,param_prep),verbose=0)
+score_train=model.evaluate(*preprocess(X_train,Y_train,param_prep),verbose=0)
+print ('score_train: %s, score_test: %s' %(score_train,score_test))
 
 print('-'*30)
 print('Predicting masks on test data...')
 print('-'*30)
-#y_pred=model.predict(X_test)
-y_pred=model.predict(X_train)
+#y_pred=model.predict(preprocess(X_test,Y_test,param_prep)[0])
+#y_pred=model.predict(preprocess(X_train,Y_train,param_prep)[0])
 #%%
 from skimage.draw import circle
 
-y=(y_pred*h)#.astype('int16')
-X=X_train
-Y=Y_train
+tt='train'
+
+# pre-processing 
+param_prep={
+    'h': h,
+    'w': w,
+    'crop'    : None,
+    'norm_type' : 'minmax_bound',
+    'output' : 'mask',
+}
+
+if tt is 'train':
+    n1=np.random.randint(len(X_train),size=100)
+    X,Y=preprocess(X_train[n1],Y_train[n1],param_prep)
+else:
+    X,Y=preprocess(X_test,Y_test,param_prep)
+
+# prediction
+y_p=model.predict(X)    
+y_pred=(y_p*[h,w,100])#.astype('int16')
+
 
 Y_pred=np.zeros_like(Y)
-
-for k1 in range(y.shape[0]):
+for k1 in range(Y_pred.shape[0]):
     img = np.zeros((h, w), dtype=np.uint8)
-    r,c,radius=y[k1,:]
+    r,c,radius=y_pred[k1,:]
     rr, cc = circle(r,c,  radius)
     img[rr, cc] = 1
     Y_pred[k1,:]=img
 
-Y1=Y
-Y2=Y_pred
 plt.figure(figsize=(20,20))
-#plt.figure()
-n1=disp_img_2masks(X,Y1,Y2,4,4,0)
+n1=disp_img_2masks(X,Y,Y_pred,4,4,0)
 plt.show()
 
 #%%     
-n1=disp_img_2masks(X_batch,Y_batch,None,2,4,0)
+n1=disp_img_2masks(X_batch,Y_batch,None,2,2,0)
