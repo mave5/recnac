@@ -23,6 +23,8 @@
 
 
 #### Articles
+* [Validation, comparison, and combination of algorithms for automatic detection
+of pulmonary nodules in computed tomography images: the LUNA16 challenge](https://arxiv.org/pdf/1612.08012.pdf)
 * [VoxResNet: Deep Voxelwise Residual Networks for Volumetric Brain Segmentation](https://arxiv.org/abs/1608.05895)
 * [3D Convolutional Neural Networks for Human Action Recognition]  (http://machinelearning.wustl.edu/mlpapers/paper_files/icml2010_JiXYY10.pdf)
 * [Deep Convolutional Neural Networks for Computer-Aided Detection: CNN Architectures, Dataset Characteristics and Transfer Learning] (https://arxiv.org/pdf/1602.03409.pdf)
