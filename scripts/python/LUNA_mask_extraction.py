@@ -78,7 +78,7 @@ luna_csv_path = luna_path+"CSVFILES/"
 output_path = "./output/numpy/luna/subset/"
 if not os.path.isdir(output_path):
     os.mkdir(output_path)
-
+#%% loop over all subsets
 for ss in range(3,10):
     subset=str(ss)+"/"
     luna_subset_path = luna_path+"subset"+subset
@@ -87,9 +87,10 @@ for ss in range(3,10):
     #
     # The locations of the nodes
     df_node = pd.read_csv(luna_csv_path+"annotations.csv")
+    print (len(df_node))
     df_node["file"] = df_node["seriesuid"].map(lambda file_name: get_filename(file_list, file_name))
     df_node = df_node.dropna()
-
+    print (len(df_node))
     #####
     #
     # Looping over the image files
@@ -120,6 +121,7 @@ for ss in range(3,10):
                                      width, height, spacing, origin)
                     masks[i] = mask
                     imgs[i] = img_array[i_z]
+
                 np.save(os.path.join(output_path,"images_%04d_%04d.npy" % (fcount, node_idx)),imgs)
                 np.save(os.path.join(output_path,"masks_%04d_%04d.npy" % (fcount, node_idx)),masks)
 

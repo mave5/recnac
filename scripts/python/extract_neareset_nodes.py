@@ -177,6 +177,7 @@ def getRegionMetricRow(fnode_name,fimgs_name,params):
     # fname, numpy array of dimension [#slices, 1, 512, 512] containing the images
     f1 = np.load(fnode_name)
     ynode0=f1['Y'] # nodule 
+    #print ynode0.shape
     
     h,w,R=params
     ynode=ynode0*[h,w,R]

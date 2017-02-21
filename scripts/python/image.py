@@ -252,7 +252,7 @@ class ImageDataGenerator(object):
                             'a tuple or list of two floats. '
                             'Received arg: ', zoom_range)
 
-    def flow(self, X, y=None, batch_size=32, shuffle=True, seed=None,
+    def flow(self, X, y=None, batch_size=32, shuffle=False, seed=None,
              save_to_dir=None, save_prefix='', save_format='jpeg'):
         return NumpyArrayIterator(
             X, y, self,

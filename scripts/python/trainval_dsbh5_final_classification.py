@@ -1,16 +1,12 @@
  #from __future__import print_function
 
 import numpy as np
-from keras.models import Model
+#from keras.models import Model
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
-from keras.layers import Input, merge, Convolution2D, MaxPooling2D, UpSampling2D
-from keras.optimizers import Adam
-from keras.optimizers import SGD
-from keras.callbacks import ModelCheckpoint ,LearningRateScheduler
 #from keras import backend as K
 #from sklearn.externals import joblib
 from sklearn import cross_validation
-import random
+#import random
 import datetime
 import utils
 #from image import ImageDataGenerator
@@ -23,12 +19,13 @@ import time
 import os
 import matplotlib.pylab as plt
 import scipy as sp
+import h5py    
 #from skimage import measure, morphology, segmentation
 #%%
 
 root_data='/media/mra/win7/data/misc/kaggle/datascience2017/notebooks'
-#path2dsb=root_data+'/output/data/dsb/'
-path2dsb="/media/mra/My Passport/Kaggle/datascience2017/dsb/"
+path2dsb=root_data+'/output/data/dsb.hdf5'
+#path2dsb="/media/mra/My Passport/Kaggle/datascience2017/dsb/"
 path2luna=root_data+'/output/data/luna/'
 path2csv=root_data+'/output/data/stage1_labels.csv'
 path2logs='./output/logs/'
@@ -46,13 +43,13 @@ img_rows = 512
 img_cols = 512
 
 # batch size
-bs=16
+bs=32
 
 # trained data dimesnsion
-h,w=256,256
+h,w=512,512
 
 # exeriment name to record weights and scores
-experiment='ClassifyLUNAvsDSB_aug'+'_hw_'+str(h)+'by'+str(w)
+experiment='dsb_final_classify_aug'+'_hw_'+str(h)+'by'+str(w)
 print ('experiment:', experiment)
 
 # seed point
@@ -83,15 +80,25 @@ loggerFileName = os.path.join(path2logs,  suffix + '.txt')
 utils.initialize_logger(loggerFileName)
 
 
+# loading pre-train weights
+pre_train=True
+
+# top n
+top_n=1
+z=top_n*3
 #%%
 
 # functions
-from keras.layers import Input, merge, Convolution2D, MaxPooling2D, UpSampling2D,Dropout
-from keras.layers import Activation,Reshape,Permute,Flatten,Dense
+from keras.layers import Convolution2D, MaxPooling2D, Dropout
+from keras.optimizers import Adam
+#from keras.optimizers import SGD
+from keras.callbacks import ModelCheckpoint
+#from keras.layers import Convolution2D, MaxPooling2D, Dropout
+from keras.layers import Flatten,Dense
 #from keras.layers.advanced_activations import ELU
 #from keras.models import Model
 from keras import backend as K
-from keras.optimizers import Adam#, SGD
+#from keras.optimizers import Adam#, SGD
 from keras.models import Sequential
 #from funcs.image import ImageDataGenerator
 
@@ -109,7 +116,7 @@ def model(params):
     nb_output=params['nb_output']
     
     model = Sequential()
-    model.add(Convolution2D(C, 3, 3, activation='relu',subsample=(2,2),border_mode='same', input_shape=(z, h, w)))
+    model.add(Convolution2D(C, 3, 3, activation='relu',subsample=(4,4),border_mode='same', input_shape=(z, h, w)))
 
     N=6
     for k in range(1,N):
@@ -118,7 +125,7 @@ def model(params):
         model.add(Convolution2D(C1, 3, 3, subsample=(1,1), activation='relu', border_mode='same'))              
         model.add(MaxPooling2D(pool_size=(2, 2)))
         
-    model.add(Convolution2D(C1, 3, 3, activation='relu', border_mode='same'))              
+    model.add(Convolution2D(C1, 3, 3, activation='relu',subsample=(1,1), border_mode='same'))              
     model.add(Convolution2D(C1, 3, 3, activation='relu', border_mode='same'))              
     #model.add(Dropout(0.5))
 
@@ -271,7 +278,7 @@ def disp_img_2masks(img,mask1,mask2,r=1,c=1,d=0,indices=None):
     for c1 in range(mask2.shape[1]):
         M2=np.logical_or(M2,mask2[n1,c1,:])    
     
-    C1=(0,255,9)
+    C1=(0,255,0)
     C2=(255,0,0)
     for k in range(N):    
         imgmask=image_with_mask(I1[k],M1[k],C1)
@@ -335,36 +342,57 @@ def iterate_minibatches(inputs1 , targets,  batchsize, shuffle=False, augment=Tr
     return x, np.array(y, dtype=np.uint8)
 
 # save porition
-def save_portion(X,y):
-    N=100
-    n1=np.random.randint(X_train.shape[0],size=N)
-    X=X[n1]
-    y=y[n1]
-    # save fast train data
-    np.savez(path2output+"fast_dataXy",X=X,y=y)
+#def save_portion(X,y):
+#    N=100
+#    n1=np.random.randint(X_train.shape[0],size=N)
+#    X=X[n1]
+#    y=y[n1]
+#    # save fast train data
+#    np.savez(path2output+"fast_dataXy",X=X,y=y)
 
 # extract three consecutive images from BS subject
-def extract_dsb(trn_nc,bs,df_train):
-    # pick bs random subjects
-    rnd_nc_inds=random.sample(trn_nc,bs)    
+def extract_dsb(trn_nc,bs,df_train,top_n):
     
-    # initialize    
-    X=np.zeros((bs,3,H,W),'int16')
+    # read h5 file
+    f2=h5py.File(path2dsb,'r')
+    f3=h5py.File(weightfolder+'/dsb_pred.hdf5','r')
+    
+    # initialize   
+    X=np.zeros((bs,z,H,W),'int16')
     y=np.zeros(bs,dtype='uint8')
-    for k,ind in enumerate(rnd_nc_inds):
+    for k,ind in enumerate(trn_nc):
         p_id=df_train.id[ind]
-        #print p_id
+        # label        
+        y[k]=df_train.cancer[ind]
+        #print k,ind,p_id,y[k]
+        
+        # images 
+        X0=f2[p_id]
+        
+        # predictions
+        y0=f3[p_id]
+        
+        # pick top n predictions        
+        step=3
+        yp=np.array(y0[::step,0])
+        #print yp
+        ind_topn = (-yp).argsort()[:top_n]
+        ind_topn.sort()
+        #print ind_topn
+        #print np.ediff1d(ind_topn)
+        #print ind_topn
     
-        # load data
-        f1=np.load(path2dsb+p_id+'.npz')
-        X0=f1['X']
-    
-        # pick three concecutive slices
-        n1=np.random.randint(X0.shape[0]-3)
-        #print n1
-        X0=X0[n1:n1+3]
-        #array_stats(X0) 
-        X[k,:]=X0
+        # pick top suspicious images
+        Xk=[]
+        for t1 in ind_topn:  
+            #print ind
+            Xk.append(X0[step*t1:step*t1+3])
+            #print 3*t1,3*t1+3
+        Xk=np.vstack(Xk)        
+        X[k,:]=Xk
+        #print y[k]
+    f2.close()    
+    f3.close()    
     return X,y
 
 
@@ -376,33 +404,37 @@ def logloss(act, pred):
     ll = ll * -1.0/len(act)
     return ll
 
+from itertools import islice, chain
+
+def batch(iterable, size):
+    sourceiter = iter(iterable)
+    while True:
+        batchiter = islice(sourceiter, size)
+        yield chain([batchiter.next()], batchiter)
+
+
+def unison_shuffled_copies(a, b):
+    assert len(a) == len(b)
+    p = np.random.permutation(len(a))
+    return a[p], b[p]
+    
+# convert to h5
+# create h5 file
+
+#f1=h5py.File(path2luna+'luna.hdf5','w-')
+#f1['X_train']=X_train    
+#f1['X_test']=X_test
+#f1['y_train']=y_train    
+#f1['y_test']=y_test
+#f1.close()
+
 #%%
 
 print('-'*30)
 print('Loading and preprocessing train data...')
 print('-'*30)
 
-# load Luna data
-if fast_train is False:
-    X_train = np.load(path2luna+"luna.npy")
-    y_train=np.ones(len(X_train),dtype='uint8')
-    array_stats(X_train)
-    array_stats(y_train)
-else:
-    X_train = np.load(path2luna+"fast_luna.npy")
-    y_train=np.ones(len(X_train),dtype='uint8')
-    array_stats(X_train)
-    array_stats(y_train)
-    
-sdasdasd
-# split luna data
-X_train, X_test, y_train, y_test = cross_validation.train_test_split(X_train, y_train, random_state=420, stratify=y_train,
-                                                                   test_size=0.1)
-                                                                   
-array_stats(X_train)
-array_stats(X_test)
-
-########## load DSB data
+########## load DSB data, only non-cancer
 df_train = pd.read_csv(path2csv)
 print('Number of training patients: {}'.format(len(df_train)))
 print('Cancer rate: {:.4}%'.format(df_train.cancer.mean()*100))
@@ -413,29 +445,28 @@ non_cancer=df_train[df_train.cancer==0].index
 cancer=df_train[df_train.cancer==1].index
 print 'total non cancer:%s, total cancer:%s' %(len(non_cancer),len(cancer))
 
-# total non cancers
-nb_noncancer=len(non_cancer)
-y_dsb=np.zeros(nb_noncancer,dtype='uint8')
+y_nc=np.zeros(len(non_cancer),'uint8')
+y_c=np.ones(len(cancer),'uint8')
 
 # train val split
-trn_nc, val_nc, trn_y, val_y = cross_validation.train_test_split(non_cancer,y_dsb, random_state=420, stratify=y_dsb,
-test_size=0.1)                                                                   
+#path2trainvalindx=weightfolder+'/dsb_train_val_index'
+trn_nc, val_nc, trn_ync, val_ync = cross_validation.train_test_split(non_cancer,y_nc, random_state=420, stratify=y_nc,test_size=0.1)                                                                   
+trn_c, val_c, trn_yc, val_yc = cross_validation.train_test_split(cancer,y_c, random_state=420, stratify=y_c,test_size=0.1) 
 
-                                                                  
-# pre-processing 
-param_prep={
-    'h': h,
-    'w': w,
-    'crop'    : None,
-    'norm_type' : 'minmax_bound',
-    'output' : 'coords',
-}
+# indices of train and validation
+trn_ind=np.concatenate((trn_nc,trn_c))
+trn_y=np.concatenate((trn_ync,trn_yc))
 
-#X_train=preprocess(X_train,param_prep)
-#X_test=preprocess(X_test,param_prep)
-#array_stats(X_train)
-#array_stats(X_test)
+val_ind=np.concatenate((val_nc,val_c))
+val_y=np.concatenate((val_ync,val_yc))
 
+# shuffle
+trn_ind,trn_y=unison_shuffled_copies(trn_ind,trn_y)
+val_ind,val_y=unison_shuffled_copies(val_ind,val_y)
+
+# test data
+X_test,y_test=extract_dsb(val_ind,len(val_ind),df_train,top_n)        
+    
 #%%
 print('-'*30)
 print('Creating and compiling model...')
@@ -445,17 +476,17 @@ print('-'*30)
 params_train={
     'img_rows': h,
     'img_cols': w,
-    'img_depth':3,
+    'img_depth':z,
     'weights_path': None,        
-    'learning_rate': 3e-4,
+    'learning_rate': 3e-5,
     'optimizer': 'Adam',
     'loss': 'binary_crossentropy',
     #'loss': 'mean_squared_error',
     #'loss': 'dice',
-    'nbepoch': 100,
+    'nbepoch': 1000,
     'nb_output': nb_output,
-    'nb_filters': 8,    
-    'max_patience': 50    
+    'nb_filters': 16,    
+    'max_patience': 30    
         }
 
 model = model(params_train)
@@ -465,16 +496,29 @@ model.summary()
 path2weights=weightfolder+"/weights.hdf5"
 
 #%%
-          
+
 print ('training in progress ...')
+
+# pre-processing 
+param_prep={
+    'h': h,
+    'w': w,
+    'crop'    : None,
+    'norm_type' : 'minmax_bound',
+    'output' : 'coords',
+}
 
 # checkpoint settings
 checkpoint = ModelCheckpoint(path2weights, monitor='val_loss', verbose=0, save_best_only='True',mode='min')
 
 # load last weights
-if  os.path.exists(path2weights):
-    model.load_weights(path2weights)
-    print 'previous weights loaded!'
+if pre_train:
+    if  os.path.exists(path2weights):
+        model.load_weights(path2weights)
+        print 'previous weights loaded!'
+    else:
+        raise IOError('weights not found!')
+        
 
 # path to csv file to save scores
 path2scorescsv = weightfolder+'/scores.csv'
@@ -495,36 +539,29 @@ else:
     previous_score = 1e6
 patience = 0
 
-# compute quantities required for featurewise normalization
-# (std, mean, and principal components if ZCA whitening is applied)
 
 for e in range(params_train['nbepoch']):
     print ('epoch: %s,  Current Learning Rate: %s' %(e,params_train['learning_rate']))
     seed = np.random.randint(0, 999999)
 
-    
-    for k in range(0,X_train.shape[0],bs):
-    #for k in range(0,48,bs):
-        # extract a batch from luna data
-        X_batch=X_train[k:k+bs]
-        y_batch=y_train[k:k+bs]
-
+    #for batchiter in batch(trn_ind, bs):
+    for t1 in range(0,len(trn_ind),bs):
+        trn_ind_batch=trn_ind[t1:t1+bs]                
+        #print trn_ind_batch
         # extract a random batch from DSB
-        X,y=extract_dsb(trn_nc,bs,df_train)        
-        X_batch=np.append(X_batch,X,axis=0)
-        y_batch=np.append(y_batch,y,axis=0)
-    
-        # data augmentation    
+        X_batch,y_batch=extract_dsb(trn_ind_batch,bs,df_train,top_n)    
+        
+        # data preprocssing and augmentation    
         X_batch=preprocess(X_batch,param_prep)
         X_batch,y_batch=iterate_minibatches(X_batch,y_batch,X_batch.shape[0],shuffle=False,augment=True)
-        # preprocess
-        #X_batch=preprocess(X_batch,param_prep)
-        model.fit(X_batch, y_batch, nb_epoch=1, batch_size=bs,verbose=0,shuffle=True)    
 
+        # fit model to data
+        model.fit(X_batch, y_batch, nb_epoch=1, batch_size=bs,verbose=0,shuffle=True)    
+        #print model.evaluate(X_batch,y_batch,verbose=0)
     
     # evaluate on test and train data
-    X,y=extract_dsb(val_nc,6*bs,df_train)        
-    score_test=model.evaluate(preprocess(np.append(X_test,X,axis=0),param_prep),np.append(y_test,y,axis=0),verbose=0)
+    #score_test=model.evaluate(preprocess(np.append(X_test,X,axis=0),param_prep),np.append(y_test,y,axis=0),verbose=0)
+    score_test=model.evaluate(preprocess(X_test,param_prep),y_test,verbose=0)
     score_train=model.evaluate(X_batch,y_batch,verbose=0)
     if params_train['loss']=='dice': 
         score_test=score_test[1]   
@@ -624,8 +661,9 @@ param_prep={
 }
 
 score_test=model.evaluate(preprocess(X_test,param_prep),y_test,verbose=0)
-score_train=model.evaluate(preprocess(X_train,param_prep),y_train,verbose=0)
-print ('score_train: %s, score_test: %s' %(score_train,score_test))
+#score_train=model.evaluate(preprocess(X_train,param_prep),y_train,verbose=0)
+#print ('score_train: %s, score_test: %s' %(score_train,score_test))
+print (' score_test: %s' %(score_test))
 
 print('-'*30)
 print('Predicting masks on test data...')
@@ -650,13 +688,13 @@ if tt is 'train':
     X=preprocess(X_train[n1],param_prep)
     y=y_train[n1]
 else:
-    #X_dsb,y_dsb=extract_dsb(val_nc,2*bs,df_train)        
+    X_dsb,y_dsb=extract_dsb(val_nc,6*bs,df_train)        
     #score_test=model.evaluate(preprocess(np.append(X_test,X,axis=0),param_prep),np.append(y_test,y,axis=0),verbose=0)
-    #X=preprocess(np.append(X_test,X,axis=0),param_prep)
-    X=preprocess(X_test,param_prep)
+    X=preprocess(np.append(X_test,X_dsb,axis=0),param_prep)
+    #X=preprocess(X_test,param_prep)
     #X=preprocess(X_dsb,param_prep)
-    #y=np.append(y_test,y)
-    y=y_test
+    y=np.append(y_test,y_dsb)
+    #y=y_test
     #y=y_dsb
 
 # prediction
@@ -676,151 +714,4 @@ print 'logloss: %s' %(logloss(y,y1))
 
 #%%
 
-# non-cancer data
 
-# load data
-y_pred=[]
-for p in val_nc:
-    p_id=df_train.id[p]
-    print 'processing: %s %s' %(p,p_id)
-    f1=np.load(path2dsb+p_id+'.npz')
-    X0=f1['X']
-
-    y_p=[]
-    for k in range(X0.shape[0]-3):
-        X03=X0[k:k+3]
-        X03=X03[np.newaxis,:]
-        y0=model.predict(preprocess(X03,param_prep))
-        y_p.append(y0[0,0])    
-    y_pred.append(y_p)   
-
-# get avg max, avg of top max
-yp_avg=[]
-yp_max=[]
-yp_avgtop=[]
-for k in range(len(y_pred)):
-    yp_avg.append(np.mean(y_pred[k]))
-    yp_max.append(np.max(y_pred[k]))
-    n=5
-    yk=np.array(y_pred[k])
-    idx = (-yk).argsort()[:n]
-    yp_avgtop.append(np.mean(yk[idx]))
-
-
-yp_avg=np.array(yp_avg)
-yp_max=np.array(yp_max)
-
-
-r,c=3,3
-for k1 in range(r*c):
-    ind=np.random.randint(len(y_pred))
-    plt.subplot(r,c,k1+1)
-    plt.stem(y_pred[ind])
-    plt.show()
-
-# save non-cancer results
-np.savez(weightfolder+'/ypred_val_nc',y=y_pred,ids=df_train.id,index=val_nc)
-
-# load
-f1=np.load(weightfolder+'/ypred_val_nc.npz')
-y_pred_nc=f1['y']
-ids=f1['ids']
-indices=f1['index']
-
-y_nc=np.zeros_like(yp_max)
-print logloss(y_nc,yp_avg)
-print logloss(y_nc,yp_avgtop)
-print logloss(y_nc,yp_max)
-
-
-#%%
-# cancer data
-# load data
-y_pred_cancer=[]
-for p in cancer:
-    p_id=df_train.id[p]
-    print 'processing: %s, %s' %(p,p_id)
-    f2=np.load(path2dsb+p_id+'.npz')
-    X0=f2['X']
-
-    y_p=[]
-    for k in range(X0.shape[0]-3):
-        X03=X0[k:k+3]
-        X03=X03[np.newaxis,:]
-        y0=model.predict(preprocess(X03,param_prep))
-        y_p.append(y0[0,0])    
-    y_pred_cancer.append(y_p)   
-
-
-# average, max and avg of top max
-yp_cancer_avg=[]
-yp_cancer_max=[]
-yp_cancer_avgtop=[]
-for k in range(len(y_pred_cancer)):
-    yp_cancer_avg.append(np.mean(y_pred_cancer[k]))
-    yp_cancer_max.append(np.max(y_pred_cancer[k]))
-    n=5
-    yk=np.array(y_pred_cancer[k])
-    idx = (-yk).argsort()[:n]
-    yp_cancer_avgtop.append(np.mean(yk[idx]))
-
-
-
-# save cancer results
-np.savez(weightfolder+'/ypred_cancer',y=y_pred_cancer,ids=df_train.id,index=cancer)
-
-# load
-f3=np.load(weightfolder+'/ypred_cancer.npz')
-y_pred_cancer=f3['y']
-ids=f3['ids']
-indices=f3['index']
-
-for k1 in range(16):
-    ind=np.random.randint(len(y_pred))
-    plt.subplot(4,4,k1+1)
-    plt.stem(y_pred[ind])
-    t1=np.array(y_pred[ind])
-    n=3
-    idx = (-t1).argsort()[:n]
-    plt.title(np.mean(t1[idx]))
-    plt.show()
-
-# log loss
-y_c=np.ones_like(yp_cancer_max)
-yp_cancer_max=np.array(yp_cancer_max)
-
-print logloss(y_c,yp_cancer_max)
-print logloss(y_c,yp_cancer_avg)
-print logloss(y_c,yp_cancer_avgtop)
-
-
-t1=np.array(y_pred[0])
-n=5
-idx = (-t1).argsort()[:n]
-np.mean(t1[idx])
-
-idx2 = (-t1).argsort()[n:]
-np.mean(t1[idx2])
-
-#%%
-## verify data augmentation
-k1=3
-plt.subplot(2,3,1)
-plt.imshow(X_batch1[k1,0],cmap='gray')
-plt.subplot(2,3,2)
-plt.imshow(X_batch1[k1,1],cmap='gray')
-plt.subplot(2,3,3)
-plt.imshow(X_batch1[k1,2],cmap='gray')
-plt.title('augmented')
-plt.show()
-
-
-#k1=10
-plt.subplot(2,3,4)
-plt.imshow(X_batch[k1,0],cmap='gray')
-plt.subplot(2,3,5)
-plt.imshow(X_batch[k1,1],cmap='gray')
-plt.subplot(2,3,6)
-plt.imshow(X_batch[k1,2],cmap='gray')
-plt.title('original')
-plt.show()

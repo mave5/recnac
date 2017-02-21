@@ -1,12 +1,8 @@
  #from __future__import print_function
 
 import numpy as np
-from keras.models import Model
+#from keras.models import Model
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
-from keras.layers import Input, merge, Convolution2D, MaxPooling2D, UpSampling2D
-from keras.optimizers import Adam
-from keras.optimizers import SGD
-from keras.callbacks import ModelCheckpoint ,LearningRateScheduler
 #from keras import backend as K
 #from sklearn.externals import joblib
 from sklearn import cross_validation
@@ -23,12 +19,13 @@ import time
 import os
 import matplotlib.pylab as plt
 import scipy as sp
+import h5py    
 #from skimage import measure, morphology, segmentation
 #%%
 
 root_data='/media/mra/win7/data/misc/kaggle/datascience2017/notebooks'
-#path2dsb=root_data+'/output/data/dsb/'
-path2dsb="/media/mra/My Passport/Kaggle/datascience2017/dsb/"
+path2dsb=root_data+'/output/data/dsb.hdf5'
+#path2dsb="/media/mra/My Passport/Kaggle/datascience2017/dsb/"
 path2luna=root_data+'/output/data/luna/'
 path2csv=root_data+'/output/data/stage1_labels.csv'
 path2logs='./output/logs/'
@@ -83,15 +80,22 @@ loggerFileName = os.path.join(path2logs,  suffix + '.txt')
 utils.initialize_logger(loggerFileName)
 
 
+# loading pre-train weights
+pre_train=False
+
 #%%
 
 # functions
 from keras.layers import Input, merge, Convolution2D, MaxPooling2D, UpSampling2D,Dropout
+from keras.optimizers import Adam
+#from keras.optimizers import SGD
+from keras.callbacks import ModelCheckpoint ,LearningRateScheduler
+#from keras.layers import Convolution2D, MaxPooling2D, Dropout
 from keras.layers import Activation,Reshape,Permute,Flatten,Dense
 #from keras.layers.advanced_activations import ELU
 #from keras.models import Model
 from keras import backend as K
-from keras.optimizers import Adam#, SGD
+#from keras.optimizers import Adam#, SGD
 from keras.models import Sequential
 #from funcs.image import ImageDataGenerator
 
@@ -348,6 +352,9 @@ def extract_dsb(trn_nc,bs,df_train):
     # pick bs random subjects
     rnd_nc_inds=random.sample(trn_nc,bs)    
     
+    # read h5 file
+    f2=h5py.File(path2dsb,'r')
+    
     # initialize    
     X=np.zeros((bs,3,H,W),'int16')
     y=np.zeros(bs,dtype='uint8')
@@ -355,16 +362,16 @@ def extract_dsb(trn_nc,bs,df_train):
         p_id=df_train.id[ind]
         #print p_id
     
-        # load data
-        f1=np.load(path2dsb+p_id+'.npz')
-        X0=f1['X']
+        X0=f2[p_id]
     
         # pick three concecutive slices
-        n1=np.random.randint(X0.shape[0]-3)
+        n1=np.random.randint(len(X0)-3)
         #print n1
         X0=X0[n1:n1+3]
         #array_stats(X0) 
         X[k,:]=X0
+    
+    f2.close()    
     return X,y
 
 
@@ -376,33 +383,34 @@ def logloss(act, pred):
     ll = ll * -1.0/len(act)
     return ll
 
+# convert to h5
+# create h5 file
+
+#f1=h5py.File(path2luna+'luna.hdf5','w-')
+#f1['X_train']=X_train    
+#f1['X_test']=X_test
+#f1['y_train']=y_train    
+#f1['y_test']=y_test
+#f1.close()
+
 #%%
 
 print('-'*30)
 print('Loading and preprocessing train data...')
 print('-'*30)
 
-# load Luna data
-if fast_train is False:
-    X_train = np.load(path2luna+"luna.npy")
-    y_train=np.ones(len(X_train),dtype='uint8')
-    array_stats(X_train)
-    array_stats(y_train)
-else:
-    X_train = np.load(path2luna+"fast_luna.npy")
-    y_train=np.ones(len(X_train),dtype='uint8')
-    array_stats(X_train)
-    array_stats(y_train)
-    
-sdasdasd
-# split luna data
-X_train, X_test, y_train, y_test = cross_validation.train_test_split(X_train, y_train, random_state=420, stratify=y_train,
-                                                                   test_size=0.1)
-                                                                   
-array_stats(X_train)
-array_stats(X_test)
+### load luna data, all cancer
+f1=h5py.File(path2luna+'luna.hdf5','r')
+X_train=f1['X_train']
+y_train=f1['y_train']
+X_test=f1['X_test']
+y_test=f1['y_test']
 
-########## load DSB data
+array_stats(X_train)
+array_stats(y_train)
+
+
+########## load DSB data, only non-cancer
 df_train = pd.read_csv(path2csv)
 print('Number of training patients: {}'.format(len(df_train)))
 print('Cancer rate: {:.4}%'.format(df_train.cancer.mean()*100))
@@ -418,24 +426,18 @@ nb_noncancer=len(non_cancer)
 y_dsb=np.zeros(nb_noncancer,dtype='uint8')
 
 # train val split
-trn_nc, val_nc, trn_y, val_y = cross_validation.train_test_split(non_cancer,y_dsb, random_state=420, stratify=y_dsb,
-test_size=0.1)                                                                   
-
-                                                                  
-# pre-processing 
-param_prep={
-    'h': h,
-    'w': w,
-    'crop'    : None,
-    'norm_type' : 'minmax_bound',
-    'output' : 'coords',
-}
-
-#X_train=preprocess(X_train,param_prep)
-#X_test=preprocess(X_test,param_prep)
-#array_stats(X_train)
-#array_stats(X_test)
-
+path2trainvalindx=weightfolder+'/dsb_train_val_index'
+if not os.path.exists(path2trainvalindx+'.npz'):
+    trn_nc, val_nc, trn_y, val_y = cross_validation.train_test_split(non_cancer,y_dsb, random_state=420, stratify=y_dsb,test_size=0.1)                                                                   
+    np.savez(path2trainvalindx,trn_nc=trn_nc,trn_y=trn_y,val_nc=val_nc,val_y=val_y)
+else:
+    out1=np.load(path2trainvalindx+'.npz')
+    trn_nc=out1['trn_nc']
+    trn_y=out1['trn_y']    
+    val_nc=out1['val_nc']    
+    val_y=out1['val_y']    
+    print 'previous indices loaded!'
+    
 #%%
 print('-'*30)
 print('Creating and compiling model...')
@@ -452,10 +454,10 @@ params_train={
     'loss': 'binary_crossentropy',
     #'loss': 'mean_squared_error',
     #'loss': 'dice',
-    'nbepoch': 100,
+    'nbepoch': 1000,
     'nb_output': nb_output,
     'nb_filters': 8,    
-    'max_patience': 50    
+    'max_patience': 30    
         }
 
 model = model(params_train)
@@ -468,13 +470,26 @@ path2weights=weightfolder+"/weights.hdf5"
           
 print ('training in progress ...')
 
+# pre-processing 
+param_prep={
+    'h': h,
+    'w': w,
+    'crop'    : None,
+    'norm_type' : 'minmax_bound',
+    'output' : 'coords',
+}
+
 # checkpoint settings
 checkpoint = ModelCheckpoint(path2weights, monitor='val_loss', verbose=0, save_best_only='True',mode='min')
 
 # load last weights
-if  os.path.exists(path2weights):
-    model.load_weights(path2weights)
-    print 'previous weights loaded!'
+if pre_train:
+    if  os.path.exists(path2weights):
+        model.load_weights(path2weights)
+        print 'previous weights loaded!'
+    else:
+        raise IOError('weights not found!')
+        
 
 # path to csv file to save scores
 path2scorescsv = weightfolder+'/scores.csv'
@@ -495,8 +510,6 @@ else:
     previous_score = 1e6
 patience = 0
 
-# compute quantities required for featurewise normalization
-# (std, mean, and principal components if ZCA whitening is applied)
 
 for e in range(params_train['nbepoch']):
     print ('epoch: %s,  Current Learning Rate: %s' %(e,params_train['learning_rate']))
@@ -523,8 +536,9 @@ for e in range(params_train['nbepoch']):
 
     
     # evaluate on test and train data
-    X,y=extract_dsb(val_nc,6*bs,df_train)        
-    score_test=model.evaluate(preprocess(np.append(X_test,X,axis=0),param_prep),np.append(y_test,y,axis=0),verbose=0)
+    #X,y=extract_dsb(val_nc,6*bs,df_train)        
+    #score_test=model.evaluate(preprocess(np.append(X_test,X,axis=0),param_prep),np.append(y_test,y,axis=0),verbose=0)
+    score_test=model.evaluate(preprocess(X_test,param_prep),y_test,verbose=0)
     score_train=model.evaluate(X_batch,y_batch,verbose=0)
     if params_train['loss']=='dice': 
         score_test=score_test[1]   
@@ -650,13 +664,13 @@ if tt is 'train':
     X=preprocess(X_train[n1],param_prep)
     y=y_train[n1]
 else:
-    #X_dsb,y_dsb=extract_dsb(val_nc,2*bs,df_train)        
+    X_dsb,y_dsb=extract_dsb(val_nc,6*bs,df_train)        
     #score_test=model.evaluate(preprocess(np.append(X_test,X,axis=0),param_prep),np.append(y_test,y,axis=0),verbose=0)
-    #X=preprocess(np.append(X_test,X,axis=0),param_prep)
-    X=preprocess(X_test,param_prep)
+    X=preprocess(np.append(X_test,X_dsb,axis=0),param_prep)
+    #X=preprocess(X_test,param_prep)
     #X=preprocess(X_dsb,param_prep)
-    #y=np.append(y_test,y)
-    y=y_test
+    y=np.append(y_test,y_dsb)
+    #y=y_test
     #y=y_dsb
 
 # prediction
@@ -683,16 +697,17 @@ y_pred=[]
 for p in val_nc:
     p_id=df_train.id[p]
     print 'processing: %s %s' %(p,p_id)
-    f1=np.load(path2dsb+p_id+'.npz')
-    X0=f1['X']
+    f3=h5py.File(path2dsb,'r')
+    X0=f3[p_id]
 
-    y_p=[]
+    X3=[]
     for k in range(X0.shape[0]-3):
-        X03=X0[k:k+3]
-        X03=X03[np.newaxis,:]
-        y0=model.predict(preprocess(X03,param_prep))
-        y_p.append(y0[0,0])    
-    y_pred.append(y_p)   
+        tmp=X0[k:k+3]
+        tmp=tmp[np.newaxis,:]
+        X3.append(tmp)
+    X3=np.vstack(X3)        
+    y_p=model.predict(preprocess(X3,param_prep))
+    y_pred.append(y_p[:,0])   
 
 # get avg max, avg of top max
 yp_avg=[]
@@ -728,9 +743,9 @@ ids=f1['ids']
 indices=f1['index']
 
 y_nc=np.zeros_like(yp_max)
-print logloss(y_nc,yp_avg)
-print logloss(y_nc,yp_avgtop)
-print logloss(y_nc,yp_max)
+print 'avg: %s' %logloss(y_nc,yp_avg)
+print 'top avg: %s' %logloss(y_nc,yp_avgtop)
+print 'max: %s ' %logloss(y_nc,yp_max)
 
 
 #%%
@@ -740,16 +755,17 @@ y_pred_cancer=[]
 for p in cancer:
     p_id=df_train.id[p]
     print 'processing: %s, %s' %(p,p_id)
-    f2=np.load(path2dsb+p_id+'.npz')
-    X0=f2['X']
+    f4=h5py.File(path2dsb,'r')
+    X0=f4[p_id]
 
-    y_p=[]
+    X3=[]
     for k in range(X0.shape[0]-3):
-        X03=X0[k:k+3]
-        X03=X03[np.newaxis,:]
-        y0=model.predict(preprocess(X03,param_prep))
-        y_p.append(y0[0,0])    
-    y_pred_cancer.append(y_p)   
+        tmp=X0[k:k+3]
+        tmp=tmp[np.newaxis,:]
+        X3.append(tmp)
+    X3=np.vstack(X3)        
+    y_p=model.predict(preprocess(X3,param_prep))
+    y_pred_cancer.append(y_p[:,0])   
 
 
 # average, max and avg of top max
@@ -757,13 +773,13 @@ yp_cancer_avg=[]
 yp_cancer_max=[]
 yp_cancer_avgtop=[]
 for k in range(len(y_pred_cancer)):
-    yp_cancer_avg.append(np.mean(y_pred_cancer[k]))
+    maxyp=np.max(y_pred_cancer[k])
+    yp_cancer_avg.append(np.mean(y_pred_cancer[k])/maxyp)
     yp_cancer_max.append(np.max(y_pred_cancer[k]))
     n=5
     yk=np.array(y_pred_cancer[k])
     idx = (-yk).argsort()[:n]
     yp_cancer_avgtop.append(np.mean(yk[idx]))
-
 
 
 # save cancer results
@@ -776,31 +792,18 @@ ids=f3['ids']
 indices=f3['index']
 
 for k1 in range(16):
-    ind=np.random.randint(len(y_pred))
+    ind=np.random.randint(len(y_pred_cancer))
     plt.subplot(4,4,k1+1)
-    plt.stem(y_pred[ind])
-    t1=np.array(y_pred[ind])
-    n=3
-    idx = (-t1).argsort()[:n]
-    plt.title(np.mean(t1[idx]))
+    plt.stem(y_pred_cancer[ind]/np.max(y_pred_cancer[ind]))
     plt.show()
 
 # log loss
 y_c=np.ones_like(yp_cancer_max)
 yp_cancer_max=np.array(yp_cancer_max)
+print 'max:',logloss(y_c,yp_cancer_max)
+print 'avg:',logloss(y_c,yp_cancer_avg)
+print 'avg top:',logloss(y_c,yp_cancer_avgtop)
 
-print logloss(y_c,yp_cancer_max)
-print logloss(y_c,yp_cancer_avg)
-print logloss(y_c,yp_cancer_avgtop)
-
-
-t1=np.array(y_pred[0])
-n=5
-idx = (-t1).argsort()[:n]
-np.mean(t1[idx])
-
-idx2 = (-t1).argsort()[n:]
-np.mean(t1[idx2])
 
 #%%
 ## verify data augmentation
