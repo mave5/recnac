@@ -24,6 +24,7 @@
 
 
 #### Articles
+* [Pulmonary nodule detection in CT images: false positive reduction using multi-view convolutional networks]()
 * [The Lung Image Database Consortium (LIDC) and Image Database Resource Initiative (IDRI): a completed reference database of lung nodules on CT scans.](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3041807/pdf/MPHYA6-000038-000915_1.pdf)
 * [Validation, comparison, and combination of algorithms for automatic detection
 of pulmonary nodules in computed tomography images: the LUNA16 challenge](https://arxiv.org/pdf/1612.08012.pdf)
