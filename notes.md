@@ -9,12 +9,13 @@
 
 
 #### LUNA2016 dataset
-* data is in 10 dirs namely: subset0 to subset9
+* data collected from various ct manufactures
+* slice thickness from 0.6 to 5 mm
+* data is in 10 dirs namely: subset0 to subset9 for n-fold cross-validation
 * data are in .raw format
 * nodule annotations are in CSVFILES/annotations.csv
+* initially 1018 CT scans, excluded thick and inconsistent slices to get 888 scans
 * total 888 CT scans: (89,89,89,89,89,89,89,89,88,88)=888
-
-
 
 
 
