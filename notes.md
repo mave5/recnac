@@ -12,10 +12,8 @@
 * data is in 10 dirs namely: subset0 to subset9
 * data are in .raw format
 * nodule annotations are in CSVFILES/annotations.csv
-* LUNA_mask_extraction.py: obtain images_sbnb_slnb.npy and nodules masks_sunb_slnb.npy as numpy files,
-  where, sunb is subject number and slnb is slice number.
-* nodule masks are created from x,y,z coordinates and diameter values in CSVFILES/annotations.csv 
-* total subjects collected from all subsets: 1186
+* total 888 CT scans: (89,89,89,89,89,89,89,89,88,88)=888
+
 
 
 
@@ -30,7 +28,6 @@
 * number of slices per subject: min: 94, max: 541, avg: 179, std:67.0
 * average execution time for dicom to numpy: 10 sec/subject
 * average execution time for lung mask extraction: 50 sec/subject
-
 
 
 
@@ -53,6 +50,9 @@
 * python code: LUNA_mask_extraction.py for converting images and nodules masks into npy files
   numpy file names format: images_xxxx_yyyy.npy, where xxxx: patient number, yyyy: slice number
 * run 20 epochs with a training set size of 320 and batch size of 2 in about an hour. We started obtaing reasonable nodule mask predictions after about 3 hours of training once the reported loss value approached 0.3.
-
+* LUNA_mask_extraction.py: obtain images_sbnb_slnb.npy and nodules masks_sunb_slnb.npy as numpy files,
+  where, sunb is subject number and slnb is slice number.
+* nodule masks are created from x,y,z coordinates and diameter values in CSVFILES/annotations.csv 
+* total subjects collected from all subsets: 1186
 
 
