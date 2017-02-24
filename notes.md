@@ -54,6 +54,8 @@
 * LUNA_mask_extraction.py: obtain images_sbnb_slnb.npy and nodules masks_sunb_slnb.npy as numpy files,
   where, sunb is subject number and slnb is slice number.
 * nodule masks are created from x,y,z coordinates and diameter values in CSVFILES/annotations.csv 
-* total subjects collected from all subsets: 1186
+* patients might have more than one nodule listed in annotations.csv file, as such, althout thre are 888 ct scans,
+  total images collected from all subsets: 1186.
+  
 
 
