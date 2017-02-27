@@ -7,6 +7,7 @@ from keras import backend as K
 from skimage import measure
 #import architectures
 import numpy as np
+import scipy as sp
 #import config
 #import data
 import sys
@@ -14,6 +15,110 @@ import cv2
 import os
 
 #%%
+
+def unison_shuffled_copies(a, b):
+    assert len(a) == len(b)
+    p = np.random.permutation(len(a))
+    return a[p], b[p]
+
+def logloss(act, pred):
+    epsilon = 1e-5
+    pred = sp.maximum(epsilon, pred)
+    pred = sp.minimum(1-epsilon, pred)
+    ll = sum(act*sp.log(pred) + sp.subtract(1,act)*sp.log(sp.subtract(1,pred)))
+    ll = ll * -1.0/len(act)
+    return ll
+    
+
+# preprocess X and Y
+def preprocess_XY(X,Y,param_prep):
+    # X,Y: n,c,h,w
+    N,C,H,W=X.shape
+    
+    if Y is None:
+        Y=np.zeros_like(X,dtype='uint8')
+    else:
+        N,Cy,H,W=Y.shape        
+    
+    # get params
+    h=param_prep['h']
+    w=param_prep['w']    
+    crop=param_prep['crop']
+    norm_type=param_prep['norm_type'] # normalization 
+    output=param_prep['output'] # output
+    
+    # center crop h*w
+    if crop is 'center':
+        hc=(H-h)/2
+        wc=(W-w)/2
+        X=X[:,:,hc:H-hc,wc:W-wc]
+        Y=Y[:,:,hc:H-hc,wc:W-wc]
+    elif crop is 'random':
+        hc=(H-h)/2
+        wc=(W-w)/2
+        hcr=np.random.randint(hc)
+        wcr=np.random.randint(wc)
+        X=X[:,:,hcr:H-hcr,wcr:W-wcr]
+        Y=Y[:,:,hcr:H-hcr,wcr:W-wcr]
+        
+    # check if need to downsample
+    # resize if needed
+    if h<H:
+        X_r=np.zeros([N,C,h,w],dtype=X.dtype)
+        Y_r=np.zeros([N,Cy,h,w],dtype='uint8')
+        for k1 in range(N):
+            for k2 in range(C):
+                X_r[k1,k2,:] = cv2.resize(X[k1,k2], (w, h), interpolation=cv2.INTER_CUBIC)
+            for k3 in range(Cy):                
+                Y_r[k1,k3,:] = cv2.resize(Y[k1,k3], (w, h), interpolation=cv2.INTER_CUBIC)                
+    else:
+        X_r=X
+        Y_r=Y
+
+    # normalization    
+    X_r=np.array(X_r,dtype='float32')
+    if norm_type is 'global':
+        X_r-=np.mean(X_r)
+        X_r/=np.std(X_r)
+    elif norm_type is 'local':
+        for k in range(X_r.shape[0]):
+            mean = np.mean(X_r[k,0])  # mean       
+            sigma = np.std(X_r[k,0])  # std
+            if sigma<1e-5:
+                sigma=1
+            X_r[k] = X_r[k]-mean
+            X_r[k] = X_r[k]/ sigma
+    elif norm_type is 'scale':
+        X_r-=np.min(X_r)
+        X_r/=np.max(X_r)
+    elif norm_type is 'minmax_bound':        
+        # normalization
+        MIN_BOUND = -1000.0
+        MAX_BOUND = 400.0
+        
+        X_r = (X_r - MIN_BOUND) / (MAX_BOUND - MIN_BOUND)
+        X_r[X_r>1] = 1.
+        X_r[X_r<0] = 0.
+
+    # center coordinates and diameter
+    #y_r=mask2coord(Y_r)            
+    #print X_r.shape
+    #print Y_r.shape
+    #if output is 'mask':    
+    return X_r,Y_r
+    #elif output is 'coords':
+        #return X_r,y_r
+
+
+# resize
+def array_resize(X,(h,w)):
+    X=np.array(X,dtype='uint8')
+    N,C,H,W=X.shape
+    X_r=np.zeros([N,C,h,w],dtype=X.dtype)
+    for k1 in range(N):
+        for k2 in range(C):
+            X_r[k1,k2,:] = cv2.resize(X[k1,k2], (w, h), interpolation=cv2.INTER_CUBIC)
+    return X_r            
 
 
 # preprocess
@@ -151,7 +256,7 @@ def disp_img_2masks(img,mask1,mask2,r=1,c=1,d=0,indices=None):
     for c1 in range(mask2.shape[1]):
         M2=np.logical_or(M2,mask2[n1,c1,:])    
     
-    C1=(0,255,9)
+    C1=(0,255,0)
     C2=(255,0,0)
     for k in range(N):    
         imgmask=image_with_mask(I1[k],M1[k],C1)
@@ -207,6 +312,28 @@ def mask2coord(Y,nb_output=3):
     #coords=coords[:,:nb_output]
     return coords
 
+# calcualte dice
+def calc_dice(X,Y,d=0):
+    N=X.shape[d]    
+    # intialize dice vector
+    dice=np.zeros([N,1])
+
+    for k in range(N):
+        x=X[k,0] >.5 # convert to logical
+        y =Y[k,0]>.5 # convert to logical
+
+        # number of ones for intersection and union
+        intersectXY=np.sum((x&y==1))
+        unionXY=np.sum(x)+np.sum(y)
+
+        if unionXY!=0:
+            dice[k]=2* intersectXY/(unionXY*1.0)
+            #print 'dice is: %0.2f' %dice[k]
+        else:
+            dice[k]=1
+            #print 'dice is: %0.2f' % dice[k]
+        #print 'processing %d, dice= %0.2f' %(k,dice[k])
+    return np.mean(dice),dice
 
 
 #%%
@@ -576,3 +703,6 @@ def predict_intermediate_output(X, model, layer_name, params):
         intermediate_output[batch_start:batch_end] = intermediate_batch_output
         
     return intermediate_output
+    
+    
+    
