@@ -24,18 +24,18 @@ path2logs='./output/logs/'
 H,W=512,512
 
 # batch size
-bs=4
+bs=8
 
-
+c_in=7
 
 # trained data dimesnsion
 h,w=256,256
 
 # time step
-timestep=50
+z=2
 
 # exeriment name to record weights and scores
-experiment='dsb_rnn_c4_classify'+'_hw_'+str(h)+'by'+str(w)
+experiment='dsb_cnn_classify'+'_hw_'+str(h)+'by'+str(w)+'_cin'+str(c_in)
 print ('experiment:', experiment)
 
 # seed point
@@ -122,10 +122,10 @@ def extract_dsb(ids,augmentation=False):
         f2=h5py.File(path2dsb,'r')
         X1=f2[id]
         n=X1.shape[0]
-        X1=np.append(X1,np.zeros((3-n%3,H,W),dtype='int16'),axis=0)
+        X1=np.append(X1,np.zeros((c_in-n%c_in,H,W),dtype='int16'),axis=0)
         #print X1.shape
         n=X1.shape[0]
-        X1=np.reshape(X1,(n/3,3,H,W))
+        X1=np.reshape(X1,(n/c_in,c_in,H,W))
         #print X1.shape
         #X.append(X1)
         y1=f2[id].attrs['cancer']
@@ -139,21 +139,35 @@ def extract_dsb(ids,augmentation=False):
             X1,_=iterate_minibatches(X1,X1,X1.shape[0],shuffle=False,augment=True)                
               
         # obtain nodules 
-        th_area=50      
-        Yp_seg=seg_model.predict(X1)>0.5
-        nz_yp=np.where(np.sum(Yp_seg,axis=(1,2,3))>th_area)
+        #th_area=10      
+        Yp_seg=seg_model.predict(X1)>.5
+        # find areas
+        sumYp=np.sum(Yp_seg,axis=(1,2,3))
+        # sort areas
+        #sYp_sort=np.argsort(-sumYp)
+        #nz_yp=np.where(np.sum(Yp_seg,axis=(1,2,3))>th_area)
         #print 'cancer %s, number of non-zero masks:  %s' %(y1,len(nz_yp[0]))
+        #print 'cancer %s, max area:  %s' %(y1,np.mean(sumYp))
         
-        X1=X1[nz_yp]        
-        Yp_seg=Yp_seg[nz_yp]
+        # pick non zeros
+        #X1=X1[nz_yp]        
+        # pick max area
+        Yp_seg=Yp_seg[np.argmax(sumYp)]
+        X1=X1[np.argmax(sumYp)]
+        #Yp_seg=np.squeeze(Yp_seg)
         
         # concat image with mask
-        Yp_seg=np.append(X1,Yp_seg,axis=1)
+        Yp_seg=np.append(X1[3][np.newaxis,:],Yp_seg,axis=0)
+        #for i in range(X1.shape[0]):
+            #for j in range(X1.shape[1]):
+                #X1[i,j,:]=np.multiply(X1[i,j,:],Yp_seg[i,0])
 
+        #Yp_seg=X1
         Y_seg.append(Yp_seg)
     
     # prepare for RNN: 5D array    
-    Yp_seg=pad4rnn(Y_seg,timestep)
+    #Yp_seg=pad4rnn(Y_seg,timestep)
+    Yp_seg=np.stack(Y_seg)
 
     return Yp_seg,np.array(y, dtype=np.uint8)
     #return X,np.array(y, dtype=np.uint8)
@@ -161,14 +175,13 @@ def extract_dsb(ids,augmentation=False):
 
 def pad4rnn(X,timestep):
     c,h,w=X[0].shape[1:]
-    Xt=np.zeros((len(X),timestep,c,h,w),'float32')
+    Xt=np.zeros((len(X),timestep,h,w),'float32')
     for k in range(len(X)):
         # pre-prate for RNN        
         if X[k].shape[0]>timestep:
-            Xt[k]=X[k][:timestep]
+            Xt[k]=X[k][:timestep,0]
         else:
-            Xt[k]=np.append(X[k],np.zeros((timestep-X[k].shape[0],c,h,w),'float32'),axis=0)
-    
+            Xt[k]=np.append(np.zeros((1,timestep-X[k].shape[0],h,w),'float32'),np.expand_dims(X[k][:,0],axis=0),axis=1)
     return Xt
 
 #%%
@@ -216,7 +229,7 @@ val_ids,val_y=utils.unison_shuffled_copies(val_ids,val_y)
 params_seg={
     'h': h,
     'w': w,
-    'c_in': 3,           
+    'c_in': c_in,           
     'weights_path': None,        
     'learning_rate': 3e-5,
     'optimizer': 'Adam',
@@ -248,11 +261,11 @@ else:
 params_train={
         'h': h,
         'w': w,
-        'c': 4,
-        'timestep': timestep,
-        'optimizer': 'RMSprop()',
-        'learning_rate': 1e-5,
-        'optimizer': 'rmsprop',
+        'z': z,
+        #'timestep': timestep,
+        #'optimizer': 'RMSprop()',
+        'learning_rate': 3e-4,
+        'optimizer': 'Adam',
         'loss': 'binary_crossentropy',
         #'loss': 'mean_squared_error',
         'nbepoch': 1000,
@@ -260,8 +273,8 @@ params_train={
         'nb_filters': 16,    
         'max_patience': 30    
         }
-model_rnn=models.classify_rnn(params_train)
-model_rnn.summary()
+model=models.model(params_train)
+model.summary()
 
 path2weights=weightfolder+"/weights.hdf5"
 
@@ -279,14 +292,13 @@ param_prep={
 }
 
 
-
 # checkpoint settings
 #checkpoint = ModelCheckpoint(path2weights, monitor='val_loss', verbose=0, save_best_only='True',mode='min')
 
 # load last weights
 if pre_train:
     if  os.path.exists(path2weights):
-        model_rnn.load_weights(path2weights)
+        model.load_weights(path2weights)
         print 'previous weights loaded!'
     else:
         raise IOError('weights not found!')
@@ -311,11 +323,14 @@ else:
     previous_score = 1e6
 patience = 0
 
+# train on non cancer first
+c_nc=1
 
 for epoch in range(params_train['nbepoch']):
-    print ('epoch: %s,  Current Learning Rate: %.1e' %(epoch,model_rnn.optimizer.lr.get_value()))
+    print ('epoch: %s,  Current Learning Rate: %.1e' %(epoch,model.optimizer.lr.get_value()))
     seed = np.random.randint(0, 999999)
-    trn_ids_pick=random.sample(trn_ids,bs*64)
+    trn_ids_pick=random.sample(trn_ids,256)
+    #trn_ids_pick=trn_ids[trn_y==c_nc]
 
     bs2=8*bs
     for t1 in range(0,len(trn_ids_pick),bs2):
@@ -324,22 +339,27 @@ for epoch in range(params_train['nbepoch']):
     
         # extract nodule masks 
         X_batch,y_batch=extract_dsb(trn_id_batch,False)    
-            
-        # fit model to data
-        class_weight={0:0.25,1:1.}
-        model_rnn.fit(X_batch, np.array(y_batch), nb_epoch=1, batch_size=bs2,verbose=0,shuffle=False)    
 
+        # fit model to data
+        #class_weight={0:0.25,1:1.}
+        hist=model.fit(X_batch, np.array(y_batch), nb_epoch=1, batch_size=bs,verbose=0,shuffle=True)    
+        print hist.history       
         
     # evaluate on test and train data
-    X_test,y_test=extract_dsb(val_ids,False)    
-    score_test=model_rnn.evaluate(X_test,np.array(y_test),verbose=0)
+    if epoch==0:    
+        X_test,y_test=extract_dsb(val_ids,False) 
+        #X_test=X_test[y_test==c_nc]        
+        #y_test=y_test[y_test==c_nc]
+    score_test=model.evaluate(X_test,np.array(y_test),verbose=0,batch_size=bs)
     
-    score_train=model_rnn.evaluate(X_batch,np.array(y_batch),verbose=0)
+    #score_train=model.evaluate(X_batch,np.array(y_batch),verbose=0,batch_size=bs)
+    score_train=hist.history
     
     if params_train['loss']=='dice': 
         score_test=score_test[1]   
         score_train=score_train[1]
-   
+    
+    
     print ('score_train: %s, score_test: %s' %(score_train,score_test))
     scores_test=np.append(scores_test,score_test)
     scores_train=np.append(scores_train,score_train)    
@@ -350,7 +370,7 @@ for epoch in range(params_train['nbepoch']):
             print ("!!!!!!!!!!!!!!!!!!!!!!!!!!! viva, improvement!!!!!!!!!!!!!!!!!!!!!!!!!!!") 
             best_score = score_test
             patience = 0
-            model_rnn.save_weights(path2weights)            
+            model.save_weights(path2weights)            
             
         # learning rate schedule
         if score_test<=previous_score:
@@ -361,7 +381,7 @@ for epoch in range(params_train['nbepoch']):
             print ("!!!!!!!!!!!!!!!!!!!!!!!!!!! viva, improvement!!!!!!!!!!!!!!!!!!!!!!!!!!!") 
             best_score = score_test
             patience = 0
-            model_rnn.save_weights(path2weights)            
+            model.save_weights(path2weights)            
             
         # learning rate schedule
         if score_test>previous_score:
@@ -372,9 +392,9 @@ for epoch in range(params_train['nbepoch']):
     if patience == params_train['max_patience']:
         params_train['learning_rate'] = params_train['learning_rate']/2
         print ("Upating Current Learning Rate to: ", params_train['learning_rate'])
-        model_rnn.optimizer.lr.set_value(params_train['learning_rate'])
+        model.optimizer.lr.set_value(params_train['learning_rate'])
         print ("Loading the best weights again. best_score: ",best_score)
-        model_rnn.load_weights(path2weights)
+        model.load_weights(path2weights)
         patience = 0
     
     # save current test score
@@ -419,7 +439,7 @@ print('-'*30)
 # load best weights
 
 if os.path.exists(path2weights):
-    model_rnn.load_weights(path2weights)
+    model.load_weights(path2weights)
     print 'weights loaded!'
 else:
     raise IOError
@@ -433,8 +453,8 @@ param_prep={
     'output' : 'coords',
 }
 
-#score_test=model_rnn.evaluate(utils.preprocess(X_test,param_prep),y_test,verbose=0)
-score_test=model_rnn.evaluate(X_test,y_test,verbose=0)
+#score_test=model.evaluate(utils.preprocess(X_test,param_prep),y_test,verbose=0)
+score_test=model.evaluate(X_test,y_test,verbose=0)
 #score_train=model.evaluate(preprocess(X_train,param_prep),y_train,verbose=0)
 #print ('score_train: %s, score_test: %s' %(score_train,score_test))
 print (' score_test: %s' %(score_test))

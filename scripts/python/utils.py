@@ -257,7 +257,7 @@ def disp_img_2masks(img,mask1,mask2,r=1,c=1,d=0,indices=None):
         M2=np.logical_or(M2,mask2[n1,c1,:])    
     
     C1=(0,255,0)
-    C2=(255,0,0)
+    C2=(0,0,255)
     for k in range(N):    
         imgmask=image_with_mask(I1[k],M1[k],C1)
         imgmask=image_with_mask(imgmask,M2[k],C2)
@@ -286,15 +286,6 @@ def array_stats(X):
 #    # save fast train data
 #    np.savez(path2output+"fast_dataXy",X=X,y=y)
 
-
-
-def logloss(act, pred):
-    epsilon = 1e-5
-    pred = sp.maximum(epsilon, pred)
-    pred = sp.minimum(1-epsilon, pred)
-    ll = sum(act*sp.log(pred) + sp.subtract(1,act)*sp.log(sp.subtract(1,pred)))
-    ll = ll * -1.0/len(act)
-    return ll
 
 
 # convert mask to coordinates

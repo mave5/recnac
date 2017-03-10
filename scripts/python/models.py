@@ -17,11 +17,11 @@ from keras.models import Sequential
 # model
 def model(params):
 
-    h=params['img_rows']
-    w=params['img_cols']
-    z=params['img_depth']
+    h=params['h']
+    w=params['w']
+    z=params['z']
     lr=params['learning_rate']
-    weights_path=params['weights_path']
+    #weights_path=params['weights_path']
     loss=params['loss']
     C=params['nb_filters']
     nb_output=params['nb_output']
@@ -41,15 +41,15 @@ def model(params):
     #model.add(Dropout(0.5))
 
     model.add(Flatten())
-    model.add(Dropout(0.5))
+    model.add(Dropout(0.1))
     model.add(Dense(100, activation='relu'))
     #model.add(Dropout(0.1))
 
     model.add(Dense(nb_output, activation='sigmoid'))
     
     #load previous weights
-    if weights_path:
-        model.load_weights(weights_path)
+    #if weights_path:
+        #model.load_weights(weights_path)
 
     model.compile(loss=loss, optimizer=Adam(lr))
 
@@ -207,36 +207,38 @@ from keras.layers.wrappers import TimeDistributed
 from keras.layers.recurrent import GRU
 from keras.optimizers import RMSprop, Adadelta
 from keras.layers import Input, Dropout
-from keras.layers import Activation, Reshape, Permute
+#from keras.layers import Activation, Reshape, Permute
 #from keras.utils import np_utils
 
 
 def classify_rnn(params):
     
-    timestep=params['timestep']    
+    timesteps=params['timesteps']    
     h=params['h']
     w=params['w']
-    c=params['c']
+    z=params['z']
+    lr=params['learning_rate']
     nb_output=params['nb_output']
     loss=params['loss']
-    optimizer=params['optimizer']
-    
+    C=params['nb_filters']
+    #optimizer=params['optimizer']
+
     # define model
     model = Sequential()
     
-    model.add(TimeDistributed(Convolution2D(16, 3, 3, subsample=(2,2),border_mode='same',activation='relu'), input_shape=(timestep,c,h,w)))
+    model.add(TimeDistributed(Convolution2D(C, 3, 3, subsample=(1,1),border_mode='same',activation='relu'), input_shape=(timesteps,z,h,w)))
     #model.add(TimeDistributed(Convolution2D(16, 3, 3, border_mode='same',activation='relu')))
     model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2),border_mode='valid')))
     
-    model.add(TimeDistributed(Convolution2D(32, 3, 3, border_mode='same',activation='relu')))
+    model.add(TimeDistributed(Convolution2D(2*C, 3, 3, border_mode='same',activation='relu')))
     #model.add(TimeDistributed(Convolution2D(32, 3, 3, border_mode='same',activation='relu')))
     model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2),border_mode='valid')))
     
-    model.add(TimeDistributed(Convolution2D(64, 3, 3, border_mode='same',activation='relu')))
+    model.add(TimeDistributed(Convolution2D(4*C, 3, 3, border_mode='same',activation='relu')))
     #model.add(TimeDistributed(Convolution2D(64, 3, 3, border_mode='same',activation='relu')))
     model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2),border_mode='valid')))
     
-    model.add(TimeDistributed(Convolution2D(128, 3, 3, border_mode='same',activation='relu')))
+    model.add(TimeDistributed(Convolution2D(8*C, 3, 3, border_mode='same',activation='relu')))
     #model.add(TimeDistributed(Convolution2D(128, 3, 3, border_mode='same',activation='relu')))
     model.add(TimeDistributed(MaxPooling2D(pool_size=(2, 2),border_mode='valid')))
     
@@ -245,19 +247,199 @@ def classify_rnn(params):
     #model.add(TimeDistributed(Convolution2D(256, 3, 3, border_mode='same',activation='relu')))
     
     model.add(TimeDistributed(Flatten()))
-    model.add(Activation('relu'))
-    model.add(GRU(output_dim=100,return_sequences=True))
-    model.add(GRU(output_dim=50,return_sequences=False))
+    model.add(Dropout(0.2))
+    #model.add(Activation('relu'))
+    model.add(GRU(output_dim=100,return_sequences=False))
+    #model.add(GRU(output_dim=100,return_sequences=False))
     model.add(Dropout(0.2))
     model.add(Dense(nb_output, activation='sigmoid'))
     
-    optimizer = RMSprop()
+    optimizer = RMSprop(lr)
     model.compile(loss=loss, optimizer=optimizer)
 
     return model
     
+#%%
 
 
+# model
+def vgg_model(params):
 
-
+    h=params['h']
+    w=params['w']
+    z=params['z']
+    lr=params['learning_rate']
+    #weights_path=params['weights_path']
+    loss=params['loss']
+    C=params['nb_filters']
+    nb_output=params['nb_output']
     
+    model = Sequential()
+    model.add(Convolution2D(C, 3, 3, activation='relu',subsample=(1,1),border_mode='same', input_shape=(z, h, w)))
+
+    N=5
+    for k in range(1,N):
+        C1=np.min([2**k*C,512])
+        model.add(Convolution2D(C1, 3, 3, activation='relu', subsample=(1,1), border_mode='same'))              
+        model.add(Convolution2D(C1, 3, 3, subsample=(1,1), activation='relu', border_mode='same'))              
+        model.add(Convolution2D(C1, 3, 3, subsample=(1,1), activation='relu', border_mode='same'))                      
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+
+        
+    #model.add(Convolution2D(C1, 3, 3, activation='relu', border_mode='same'))              
+    #model.add(Convolution2D(C1, 3, 3, activation='relu', border_mode='same'))              
+    #model.add(Dropout(0.5))
+
+    model.add(Flatten())
+    model.add(Dropout(0.5))
+    #model.add(Dense(100, activation='relu'))
+    #model.add(Dropout(0.1))
+
+    model.add(Dense(nb_output, activation='sigmoid'))
+    
+    #load previous weights
+    #if weights_path:
+        #model.load_weights(weights_path)
+
+    model.compile(loss=loss, optimizer=Adam(lr))
+
+    return model
+#%%
+
+#from keras.layers import merge, Input
+#from keras.layers import Dense, Activation, Flatten
+#from keras.layers import Convolution2D, MaxPooling2D, ZeroPadding2D, AveragePooling2D
+from keras.layers import ZeroPadding2D, AveragePooling2D
+from keras.layers import BatchNormalization
+#from keras.models import Model
+#from keras.preprocessing import image
+#import keras.backend as K
+#from keras.utils.layer_utils import convert_all_kernels_in_model
+#from keras.utils.data_utils import get_file
+#from imagenet_utils import decode_predictions, preprocess_input
+
+def identity_block(input_tensor, kernel_size, filters, stage, block):
+    '''The identity_block is the block that has no conv layer at shortcut
+
+    # Arguments
+        input_tensor: input tensor
+        kernel_size: defualt 3, the kernel size of middle conv layer at main path
+        filters: list of integers, the nb_filters of 3 conv layer at main path
+        stage: integer, current stage label, used for generating layer names
+        block: 'a','b'..., current block label, used for generating layer names
+    '''
+    nb_filter1, nb_filter2, nb_filter3 = filters
+    if K.image_dim_ordering() == 'tf':
+        bn_axis = 3
+    else:
+        bn_axis = 1
+    conv_name_base = 'res' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+
+    x = Convolution2D(nb_filter1, 1, 1, name=conv_name_base + '2a')(input_tensor)
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(x)
+    x = Activation('relu')(x)
+
+    x = Convolution2D(nb_filter2, kernel_size, kernel_size,
+                      border_mode='same', name=conv_name_base + '2b')(x)
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = Activation('relu')(x)
+
+    x = Convolution2D(nb_filter3, 1, 1, name=conv_name_base + '2c')(x)
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+
+    x = merge([x, input_tensor], mode='sum')
+    x = Activation('relu')(x)
+    return x
+
+def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2)):
+    '''conv_block is the block that has a conv layer at shortcut
+
+    # Arguments
+        input_tensor: input tensor
+        kernel_size: defualt 3, the kernel size of middle conv layer at main path
+        filters: list of integers, the nb_filters of 3 conv layer at main path
+        stage: integer, current stage label, used for generating layer names
+        block: 'a','b'..., current block label, used for generating layer names
+
+    Note that from stage 3, the first conv layer at main path is with subsample=(2,2)
+    And the shortcut should have subsample=(2,2) as well
+    '''
+    nb_filter1, nb_filter2, nb_filter3 = filters
+    if K.image_dim_ordering() == 'tf':
+        bn_axis = 3
+    else:
+        bn_axis = 1
+    conv_name_base = 'res' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+
+    x = Convolution2D(nb_filter1, 1, 1, subsample=strides,
+                      name=conv_name_base + '2a')(input_tensor)
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(x)
+    x = Activation('relu')(x)
+
+    x = Convolution2D(nb_filter2, kernel_size, kernel_size, border_mode='same',
+                      name=conv_name_base + '2b')(x)
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = Activation('relu')(x)
+
+    x = Convolution2D(nb_filter3, 1, 1, name=conv_name_base + '2c')(x)
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+
+    shortcut = Convolution2D(nb_filter3, 1, 1, subsample=strides,
+                             name=conv_name_base + '1')(input_tensor)
+    shortcut = BatchNormalization(axis=bn_axis, name=bn_name_base + '1')(shortcut)
+
+    x = merge([x, shortcut], mode='sum')
+    x = Activation('relu')(x)
+    return x
+
+
+def resnet_model(params):    
+    
+    h=params['h']
+    w=params['w']
+    z=params['z']
+    lr=params['learning_rate']
+    loss=params['loss']
+    nb_output=params['nb_output']
+    bn_axis = 1
+    
+    img_input = Input(shape=(z,h,w))
+    
+    x = ZeroPadding2D((3, 3))(img_input)
+    x = Convolution2D(64, 7, 7, subsample=(1, 1), name='conv1')(x)
+    x = BatchNormalization(axis=bn_axis, name='bn_conv1')(x)
+    x = Activation('relu')(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+
+    x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1))
+    x = identity_block(x, 3, [64, 64, 256], stage=2, block='b')
+    x = identity_block(x, 3, [64, 64, 256], stage=2, block='c')
+
+    x = conv_block(x, 3, [128, 128, 512], stage=3, block='a')
+    x = identity_block(x, 3, [128, 128, 512], stage=3, block='b')
+    x = identity_block(x, 3, [128, 128, 512], stage=3, block='c')
+    x = identity_block(x, 3, [128, 128, 512], stage=3, block='d')
+
+    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a')
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='b')
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='c')
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='d')
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='e')
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='f')
+
+    x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a')
+    x = identity_block(x, 3, [512, 512, 2048], stage=5, block='b')
+    x = identity_block(x, 3, [512, 512, 2048], stage=5, block='c')
+
+    x = AveragePooling2D((8, 8), name='avg_pool')(x)
+
+    x = Flatten()(x)
+    x = Dense(nb_output, activation='sigmoid', name='fc1000')(x)
+
+    model = Model(img_input, x)    
+    
+    model.compile(loss=loss, optimizer=Adam(lr))
+    
+    return model
