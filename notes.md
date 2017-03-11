@@ -4,6 +4,7 @@
 
 ### misc
 * nodule coordinates: (r,c,radius) or (y,x,radius)
+* training: fold0: initial lr=5E-6 for 100 epochs, reached=0.15, then lr=3E-5.
 
 
 
