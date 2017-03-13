@@ -25,6 +25,7 @@
 
 
 #### Articles
+* [Pulmonary Nodule Classification with Deep Convolutional Neural Networks on Computed Tomography Images](https://www.hindawi.com/journals/cmmm/2016/6215085/)
 * [Pulmonary Nodule Classification with Convolutional Neural Networks](http://cs231n.stanford.edu/reports2016/324_Report.pdf)
 * [Pulmonary nodule detection in CT images: false positive reduction using multi-view convolutional networks]()
 * [The Lung Image Database Consortium (LIDC) and Image Database Resource Initiative (IDRI): a completed reference database of lung nodules on CT scans.](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3041807/pdf/MPHYA6-000038-000915_1.pdf)
