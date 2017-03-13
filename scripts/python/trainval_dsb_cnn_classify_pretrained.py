@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
 from sklearn import cross_validation
 import datetime
-#from skimage import measure
 import utils
 import cv2
 import random
@@ -12,7 +11,6 @@ import matplotlib.pylab as plt
 #import scipy as sp
 import h5py    
 import models
-import hashlib
 #from keras.preprocessing.image import ImageDataGenerator
 from image import ImageDataGenerator
 #%%
@@ -26,28 +24,24 @@ path2dsbtest=root_data+'dsbtest.hdf5'
 path2dsbtest_output='./output/data/dsb/dsbtest_nodules.hdf5'
 
 path2dsbnoduls='./output/data/dsb/dsb_nodules.hdf5'
-#%%
 
+#%%
 # resize
 H,W=512,512
 
 # batch size
-bs=8
+bs=32
 
 c_in=7
 
 # trained data dimesnsion
 h,w=256,256
 
-# channels
-z=2
-hc,wc=128,128
-
-# timesteps
-timesteps=5
+# time step
+z=7
 
 # exeriment name to record weights and scores
-experiment='dsb_rnn_classify'+'roi_hw_'+str(h)+'by'+str(w)+'_cin'+str(c_in)+'_z'+str(z)+'_timesteps'+str(timesteps)
+experiment='dsb_cnn_classify_pretrained'+'_hw_'+str(h)+'by'+str(w)+'_cin'+str(c_in)+'_z'+str(z)
 print ('experiment:', experiment)
 
 # seed point
@@ -75,7 +69,7 @@ loggerFileName = os.path.join(path2logs,  suffix + '.txt')
 utils.initialize_logger(loggerFileName)
 
 # loading pre-train weights
-pre_train=True
+pre_train=True 
 
 #%%
 
@@ -85,11 +79,11 @@ datagen = ImageDataGenerator(featurewise_center=False,
         featurewise_std_normalization=False,
         samplewise_std_normalization=False,
         zca_whitening=False,
-        rotation_range=10,
+        rotation_range=15,
         width_shift_range=0.1,
         height_shift_range=0.1,
-        shear_range=0.0,
-        zoom_range=0.02,
+        shear_range=0.01,
+        zoom_range=0.01,
         channel_shift_range=0.0,
         fill_mode='constant',
         cval=0.0,
@@ -123,178 +117,55 @@ def iterate_minibatches(inputs1 , targets,  batchsize, shuffle=False, augment=Tr
     return x, np.array(y, dtype=np.uint8)         
 
 
-# crop ROI
-def crop_nodule_roi(X,Y1,y,reshape_ena=True):
-    if len(X.shape)==2:
-        X=X[np.newaxis,np.newaxis]
-    elif len(X.shape)==3:
-        X=X[np.newaxis]
-
-    if Y1 is None:
-        Y1=np.zeros_like(X,dtype='uint8')
-
-    N,C0,H0,W0=X.shape
-    #hc,wc=64,64
-    
-    Xc=np.zeros((N,C0,hc,wc),dtype=X.dtype)
-    Yc1=np.zeros((N,C0,hc,wc),dtype='uint8')
-
-    for k in range(N):
-        c,r,_=y[k,:]
-        #print r,c
-        #print r,c
-        if r>=hc/2 and (r+hc/2)<=H0:
-            r1=int(r-hc/2)
-            r2=int(r+hc/2)        
-        elif r<hc/2:
-            r1=0
-            r2=int(r1+hc)
-        elif (r+hc/2)>H0:
-            r2=H0
-            r1=r2-hc
-            
-
-        if c>=wc/2 and (c+wc/2)<=W0:
-            c1=int(c-wc/2)
-            c2=int(c+wc/2)        
-        elif c<wc/2:
-            c1=0
-            c2=int(c1+wc)
-        elif (c+wc/2)>W0:
-            c2=W0
-            c1=c2-wc
-            
-            
-        #print k,c2-c1,r2-r1,r2,c2,X.shape
-        Xc[k,:]=X[k,:,r1:r2,c1:c2]
-        Yc1[k,:]=Y1[k,:,r1:r2,c1:c2]
-
-    return Xc,Yc1
-
-
-
-def mask2coord(Y):
-    Y=np.array(Y,dtype='uint8')
-    if len(Y.shape)==2:
-        Y=Y[np.newaxis,np.newaxis]
-    elif len(Y.shape)==3:
-        Y=Y[:,np.newaxis]
-
-    N,C,H,W=Y.shape
-        
-    coords=np.zeros((N,3))
-    for k in range(N):
-        coords[k,:]=getRegionFromMap(Y[k,0])
-    
-    return coords
-
-
-def getRegionFromMap(Y):
-    Y=np.array(Y>0.5,'uint8')
-    im2, contours, hierarchy = cv2.findContours(Y,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)    
-    areaArray=[]
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        areaArray.append(area)
-    # check for any contour    
-    if len(areaArray)>0:    
-        largestcontour=contours[np.argmax(areaArray)]
-        (x,y),radius = cv2.minEnclosingCircle(largestcontour)
-        #print x,y,radius
-    else:
-        (x,y),radius=(np.random.randint(H,size=2)),20
-        #print x,y,radius
-        #raise IOError
-    return x,y,radius
-
-
 
 def extract_dsb(ids,augmentation=False):
 
-    # pre-processing 
-    param_prep0={
-        'h': H,
-        'w': W,
-        'crop'    : None,
-        'norm_type' : 'minmax_bound',
-        'output' : 'mask',
-    }
-
+    #X=[]    
     y=[]
+    Y_seg=[]
+
     # read dsb data
     f2=h5py.File(path2dsb,'r')
     
     # read dsb nodules    
     ff_dsb_nodes=h5py.File(path2dsbnoduls,'r')
-    XY=[]
+    
     for id in ids:    
         X1=f2[id]
         y1=f2[id].attrs['cancer']
         y.append(y1)
-   
-        # obtain nodules 
+
+        # nodule mask
         Yp_seg=ff_dsb_nodes[id]
               
         # find areas
         sumYp=np.sum(Yp_seg,axis=(1,2,3))
-        #print 'cancer: %s, total %s, nonzero: %s' %(y1,Yp_seg.shape[0],np.count_nonzero(sumYp))
-        
         # sort areas
-        if np.count_nonzero(sumYp)>0:
-            sYp_sort=np.argsort(-sumYp)
-        else:
-            sYp_sort=range(Yp_seg.shape[0]/2,Yp_seg.shape[0])
-            #print 'zero masks',sYp_sort,Yp_seg.shape,X1.shape
-
+        sYp_sort=np.argsort(-sumYp)
         
-        top_nodes=timesteps
-        XY0=[]
-        for t in sYp_sort[:top_nodes]:        
-            #X1=X1[sYp_sort[0]*c_in+c_in/2]
-            X0=X1[t*c_in+c_in/2]
-            X0=utils.preprocess(X0[np.newaxis,np.newaxis],param_prep0)
-
-            # nodule mask
-            # return to original size
-            Y0=cv2.resize(Yp_seg[t,0].astype('uint8'), (W, H), interpolation=cv2.INTER_CUBIC)                
-            X0=np.append(X0,Y0[np.newaxis,np.newaxis],axis=1)
-            coords=mask2coord(Y0)
-            X0,_=crop_nodule_roi(X0,None,coords)
-            #print X0.shape
-            XY0.append(X0[0])
-            
-        XY0=np.stack(XY0)[np.newaxis]
+        # largest area pick
+        X1=X1[sYp_sort[0]*c_in:sYp_sort[0]*c_in+c_in][np.newaxis]
         
-        #print XY0.shape
-        if XY0.shape[1]<timesteps:
-            print XY0.shape
-            XY0=np.append(XY0,np.zeros((1,timesteps-XY0.shape[1],XY0.shape[2],XY0.shape[3],XY0.shape[4])),axis=1)
-            print XY0.shape
-            #raise IOError
-        XY.append(XY0)        
+        # preprocess
+        X1=utils.preprocess(X1,param_prep)
+        
         # augmentation
-        #if augmentation:
-            #X,Y=iterate_minibatches(X,Y,X.shape[0],shuffle=False,augment=True)                
-    XY=np.vstack(XY)    
-    f2.close()
-    ff_dsb_nodes.close()
-    return XY,np.array(y, dtype=np.uint8)
-    #return X,np.array(y, dtype=np.uint8)
+        if augmentation:
+            X1,_=iterate_minibatches(X1,X1,X1.shape[0],shuffle=False,augment=True)                
+        
+        Y_seg.append(X1)
+
+    Yp_seg=np.vstack(Y_seg)
+
+    return Yp_seg,np.array(y, dtype=np.uint8)
+
 
 
 def extract_testdsb(ids,augmentation=False):
 
     #X=[]    
     y=[]
-    
-    # pre-processing 
-    param_prep0={
-        'h': H,
-        'w': W,
-        'crop'    : None,
-        'norm_type' : 'minmax_bound',
-        'output' : 'mask',
-    }
+    Y_seg=[]
 
     # read dsb data
     f2=h5py.File(path2dsbtest,'r')
@@ -302,52 +173,34 @@ def extract_testdsb(ids,augmentation=False):
     # read dsb nodules    
     ff_dsb_nodes=h5py.File(path2dsbtest_output,'r')
     
-    XY=[]
     for id in ids:    
         X1=f2[id]
         y1=f2[id].attrs['cancer']
         y.append(y1)
 
-             
-        # obtain nodules 
+        # nodule mask
         Yp_seg=ff_dsb_nodes[id]
               
         # find areas
         sumYp=np.sum(Yp_seg,axis=(1,2,3))
-        
         # sort areas
-        if np.count_nonzero(sumYp)>0:
-            sYp_sort=np.argsort(-sumYp)
-        else:
-            sYp_sort=range(Yp_seg.shape[0]/2,Yp_seg.shape[0])
-            #print 'zero masks',sYp_sort,Yp_seg.shape,X1.shape
-
+        sYp_sort=np.argsort(-sumYp)
         
-        top_nodes=z/2
-        XY0=[]
-        for t in sYp_sort[:top_nodes]:        
-            #X1=X1[sYp_sort[0]*c_in+c_in/2]
-            X0=X1[t*c_in+c_in/2]
-            X0=utils.preprocess(X0[np.newaxis,np.newaxis],param_prep0)
-
-            # nodule mask
-            # return to original size
-            Y0=cv2.resize(Yp_seg[t,0].astype('uint8'), (W, H), interpolation=cv2.INTER_CUBIC)                
-            X0=np.append(X0,Y0[np.newaxis,np.newaxis],axis=1)
-            coords=mask2coord(Y0)
-            X0,_=crop_nodule_roi(X0,None,coords)
-            XY0.append(X0[0])
-            
-        XY0=np.vstack(XY0)[np.newaxis]
-        XY.append(XY0)
+        # largest area pick
+        X1=X1[sYp_sort[0]*c_in:sYp_sort[0]*c_in+c_in][np.newaxis]
+        
+        # preprocess
+        X1=utils.preprocess(X1,param_prep)
+        
         # augmentation
-        #if augmentation:
-            #X,Y=iterate_minibatches(X,Y,X.shape[0],shuffle=False,augment=True)                
-    XY=np.vstack(XY)    
-    f2.close()
-    ff_dsb_nodes.close()
-    return XY,np.array(y, dtype=np.uint8)
+        if augmentation:
+            X1,_=iterate_minibatches(X1,X1,X1.shape[0],shuffle=False,augment=True)                
+        
+        Y_seg.append(X1)
 
+    Yp_seg=np.vstack(Y_seg)
+
+    return Yp_seg,np.array(y, dtype=np.uint8)
 
     
 
@@ -382,11 +235,12 @@ print 'total non cancer:%s, total cancer:%s' %(len(non_cancer),len(cancer))
 y_nc=np.zeros(len(non_cancer),'uint8')
 y_c=np.ones(len(cancer),'uint8')
 
+
 # train val split
 path2trainvalindx=weightfolder+'/train_val_index.npz'
 if not os.path.exists(path2trainvalindx):
-    trn_nc, val_nc, trn_ync, val_ync = cross_validation.train_test_split(non_cancer,y_nc, random_state=420, stratify=y_nc,test_size=0.2)                                                                   
-    trn_c, val_c, trn_yc, val_yc = cross_validation.train_test_split(cancer,y_c, random_state=420, stratify=y_c,test_size=0.2) 
+    trn_nc, val_nc, trn_ync, val_ync = cross_validation.train_test_split(non_cancer,y_nc, random_state=420, stratify=y_nc,test_size=0.1)                                                                   
+    trn_c, val_c, trn_yc, val_yc = cross_validation.train_test_split(cancer,y_c, random_state=420, stratify=y_c,test_size=0.1) 
 
 
     # indices of train and validation
@@ -408,6 +262,24 @@ else:
     val_ids=f_trvl['val_ids']
     val_y=f_trvl['val_y']
     print 'train validation indices loaded!'
+
+## train val split
+##path2trainvalindx=weightfolder+'/dsb_train_val_index'
+#trn_nc, val_nc, trn_ync, val_ync = cross_validation.train_test_split(non_cancer,y_nc, random_state=420, stratify=y_nc,test_size=0.2)                                                                   
+#trn_c, val_c, trn_yc, val_yc = cross_validation.train_test_split(cancer,y_c, random_state=420, stratify=y_c,test_size=0.1) 
+#
+## indices of train and validation
+#trn_ids=np.concatenate((trn_nc,trn_c))
+#trn_y=np.concatenate((trn_ync,trn_yc))
+#
+#val_ids=np.concatenate((val_nc,val_c))
+#val_y=np.concatenate((val_ync,val_yc))
+#
+## shuffle
+#trn_ids,trn_y=utils.unison_shuffled_copies(trn_ids,trn_y)
+#val_ids,val_y=utils.unison_shuffled_copies(val_ids,val_y)
+
+
 #%%
 
 # nodule segmentation network
@@ -426,7 +298,7 @@ params_seg={
     'nbepoch': 1000,
     'c_out': 1,
     'nb_filters': 16,    
-    'max_patience': 30    
+    'max_patience': 50    
         }
 
 seg_model=models.seg_model(params_seg)
@@ -440,35 +312,37 @@ if  os.path.exists(path2segweights):
     print 'weights loaded!'
 else:
     raise IOError
-
-weights_checksum=hashlib.md5(open(path2segweights, 'rb').read()).hexdigest()
-print 'checksum:', weights_checksum
-with open(weightfolder+'/checksum.csv', 'w+') as f:
-    f.write(weights_checksum + '\n')    
+    
 
 #%%
 
 # training params
 params_train={
-        'h': hc,
-        'w': wc,
-        'z': z,
-        'timesteps': timesteps,
-        #'optimizer': 'RMSprop()',
-        'learning_rate': 3e-7,
+        'h': h,
+        'w': w,
+        'c_in': z,
+        'learning_rate': 3e-5,
         'optimizer': 'Adam',
+        'weights_path': path2segweights,
         'loss': 'binary_crossentropy',
-        #'loss': 'mean_squared_error',
-        'nbepoch': 5000,
+        'nbepoch': 1000,
         'nb_output': 1,
         'nb_filters': 16,    
-        'max_patience': 50    
+        'max_patience': 30    
         }
-#model=models.model(params_train)
-model=models.classify_rnn(params_train)
+model=models.model_pretrain(params_train)
 model.summary()
 
 path2weights=weightfolder+"/weights.hdf5"
+
+# load weights and vrify
+for k in range(18):
+    wk=seg_model.layers[k].get_weights()
+    print len(wk)
+    model.layers[k].set_weights(wk)
+    wkk=model.layers[k].get_weights()
+    if len(wk)>0:
+        print np.sum(wk[0]),np.sum(wk[0])
 
 #%%
 print ('training in progress ...')
@@ -515,32 +389,38 @@ else:
     previous_score = 1e6
 patience = 0
 
+# train on non cancer first
+c_nc=1
 
 for epoch in range(params_train['nbepoch']):
     print ('epoch: %s,  Current Learning Rate: %.1e' %(epoch,model.optimizer.lr.get_value()))
+    #wkk=model.layers[17].get_weights()    
+    #print np.sum(wkk[0])
+    
     seed = np.random.randint(0, 999999)
     #trn_ids_pick=random.sample(trn_ids,256)
-    trn_ids_pick=trn_ids
-    #trn_ids_pick1=(trn_ids[trn_y==1])
-    #trn_ids_pick2=(trn_ids[trn_y==0])
-    #trn_ids_pick2=random.sample(trn_ids_pick2,len(trn_ids_pick1))
-    #trn_ids_pick=np.concatenate((trn_ids_pick1,trn_ids_pick2))
+    #trn_ids_pick=trn_ids
+    #trn_ids_pick=trn_ids[trn_y==c_nc]
+    
+    trn_ids_pick1=(trn_ids[trn_y==1])
+    trn_ids_pick2=(trn_ids[trn_y==0])
+    trn_ids_pick2=random.sample(trn_ids_pick2,len(trn_ids_pick1))
+    trn_ids_pick=np.concatenate((trn_ids_pick1,trn_ids_pick2))
     # shuffle ids    
-    #trn_ids_pick=np.random.permutation(trn_ids_pick)
+    trn_ids_pick=np.random.permutation(trn_ids_pick)
+    
 
-    bs2=8*bs#len(trn_ids_pick)/2
+    bs2=len(trn_ids_pick)#32*bs
     for t1 in range(0,len(trn_ids_pick),bs2):
         trn_id_batch=trn_ids_pick[t1:t1+bs2]                
-        print t1
+        #print t1
     
         # extract nodule masks 
-        X_batch,y_batch=extract_dsb(trn_id_batch,augmentation=False)    
-        Xa,Ya=iterate_minibatches(X_batch[:,:,0],X_batch[:,:,1],X_batch.shape[0],shuffle=False,augment=True)                
-        X_batch=np.append(Xa[:,:,np.newaxis],Ya[:,:,np.newaxis],axis=2)
+        X_batch,y_batch=extract_dsb(trn_id_batch,True)           
         # fit model to data
-        class_weight={0:1,1:1.}
-        hist=model.fit(X_batch, np.array(y_batch), nb_epoch=1, batch_size=bs,verbose=0,shuffle=True,class_weight=class_weight)    
-        print hist.history       
+        #class_weight={0:0.25,1:1.}
+        hist=model.fit(X_batch, np.array(y_batch), nb_epoch=1, batch_size=bs,verbose=0,shuffle=True)    
+        #print hist.history       
         
     # evaluate on test and train data
     if epoch==0:    
@@ -550,7 +430,7 @@ for epoch in range(params_train['nbepoch']):
     score_test=model.evaluate(X_test,np.array(y_test),verbose=0,batch_size=bs)
     
     #score_train=model.evaluate(X_batch,np.array(y_batch),verbose=0,batch_size=bs)
-    score_train=hist.history['loss']
+    score_train=hist.history
     
     if params_train['loss']=='dice': 
         score_test=score_test[1]   
@@ -613,7 +493,7 @@ for epoch in range(params_train['nbepoch']):
 print ('model was trained!')
 elapsed_time=(time.time()-start_time)/60
 print ('elapsed time: %d  mins' %elapsed_time)          
-#%% plot loss
+#%%
 
 plt.figure(figsize=(15,10))
 plt.plot(scores_test)
@@ -712,10 +592,9 @@ print 'total files:', len(ff_dsbtest)
 X_dsb_test,_=extract_testdsb(ff_dsbtest.keys())
 y_pred_test=model.predict(X_dsb_test)    
 
-# sample slice
 n1=np.random.randint(y_pred_test.shape[0])
-XwithY=utils.image_with_mask(X_dsb_test[n1,0],X_dsb_test[n1,1])
-plt.imshow(XwithY)
+#XwithY=utils.image_with_mask(X_dsb_test[n1,0],X_dsb_test[n1,2])
+plt.imshow(X_dsb_test[n1,0],cmap='gray')
 plt.title(y_pred_test[n1])
 
 # create submission
@@ -733,21 +612,3 @@ sub_file = os.path.join('./output/submission', 'submission_' + suffix + '.csv')
 df.to_csv(sub_file, index=False)
 print(df.head())
 
-#%%
-
-n1=np.random.randint(y_batch.shape[0])
-
-plt.subplot(1,3,1)
-XwithY=utils.image_with_mask(X_batch[n1,0,0],X_batch[n1,0,1])
-plt.imshow(XwithY)
-plt.title(n1)
-
-plt.subplot(1,3,2)
-XwithY=utils.image_with_mask(X_batch[n1,1,0],X_batch[n1,1,1])
-plt.imshow(XwithY)
-
-plt.subplot(1,3,3)
-XwithY=utils.image_with_mask(X_batch[n1,2,0],X_batch[n1,2,1])
-plt.imshow(XwithY)
-
-plt.title(y_batch[n1])

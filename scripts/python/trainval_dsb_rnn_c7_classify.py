@@ -331,7 +331,7 @@ for epoch in range(params_train['nbepoch']):
         X_batch,y_batch=extract_dsb(trn_id_batch,False)    
 
         # fit model to data
-        class_weight={0:0.25,1:1.}
+        #class_weight={0:0.25,1:1.}
         model_rnn.fit(X_batch, np.array(y_batch), nb_epoch=1, batch_size=bs2,verbose=0,shuffle=False)    
 
         

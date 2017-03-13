@@ -12,8 +12,9 @@ from keras import backend as K
 #from keras.optimizers import Adam#, SGD
 from keras.models import Sequential
 #from funcs.image import ImageDataGenerator
+import h5py
 
-
+#%%
 # model
 def model(params):
 
@@ -45,7 +46,8 @@ def model(params):
     model.add(Dense(100, activation='relu'))
     #model.add(Dropout(0.1))
 
-    model.add(Dense(nb_output, activation='sigmoid'))
+    #model.add(Dense(nb_output, activation='sigmoid'))
+    model.add(Dense(nb_output, activation='softmax'))
     
     #load previous weights
     #if weights_path:
@@ -247,7 +249,7 @@ def classify_rnn(params):
     #model.add(TimeDistributed(Convolution2D(256, 3, 3, border_mode='same',activation='relu')))
     
     model.add(TimeDistributed(Flatten()))
-    model.add(Dropout(0.2))
+    model.add(Dropout(0.1))
     #model.add(Activation('relu'))
     model.add(GRU(output_dim=100,return_sequences=False))
     #model.add(GRU(output_dim=100,return_sequences=False))
@@ -255,6 +257,7 @@ def classify_rnn(params):
     model.add(Dense(nb_output, activation='sigmoid'))
     
     optimizer = RMSprop(lr)
+    #optimizer = Adam(lr)
     model.compile(loss=loss, optimizer=optimizer)
 
     return model
@@ -443,3 +446,203 @@ def resnet_model(params):
     model.compile(loss=loss, optimizer=Adam(lr))
     
     return model
+    
+#%%
+
+
+def classify_rnn2(params):
+    
+    timesteps=params['timesteps']    
+    h=params['h']
+    w=params['w']
+    z=params['z']
+    lr=params['learning_rate']
+    nb_output=params['nb_output']
+    loss=params['loss']
+    C=params['nb_filters']
+    #optimizer=params['optimizer']
+
+  
+    inputs = Input((z,h, w))
+    conv1 = Convolution2D(C, 3, 3, activation='relu', subsample=(1,1),border_mode='same')(inputs)
+    conv1 = Convolution2D(C, 3, 3, activation='relu', border_mode='same')(conv1)
+    pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
+
+    conv2 = Convolution2D(2*C, 3, 3, activation='relu', border_mode='same')(pool1)
+    conv2 = Convolution2D(2*C, 3, 3, activation='relu', border_mode='same')(conv2)
+    pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
+
+    conv3 = Convolution2D(4*C, 3, 3, activation='relu', border_mode='same')(pool2)
+    conv3 = Convolution2D(4*C, 3, 3, activation='relu', border_mode='same')(conv3)
+    pool3 = MaxPooling2D(pool_size=(2, 2))(conv3)
+
+    conv4 = Convolution2D(8*C, 3, 3, activation='relu', border_mode='same')(pool3)
+    conv4 = Convolution2D(8*C, 3, 3, activation='relu', border_mode='same')(conv4)
+    pool4 = MaxPooling2D(pool_size=(2, 2))(conv4)
+
+    conv5 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(pool4)
+    conv5 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(conv5)
+    pool5 = MaxPooling2D(pool_size=(2, 2))(conv5)
+
+    # last layer of encoding    
+    conv6 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(pool5)
+    conv6 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(conv6)
+    conv6 =Dropout(0.5)(conv6)    
+    
+    model_encoder = Model(input=inputs, output=conv6)
+    
+    model = Sequential()
+    model.add(TimeDistributed(Convolution2D(C, 3, 3, subsample=(1,1),border_mode='same',activation='relu'), input_shape=(timesteps,z,h,w)))
+    model.add(TimeDistributed(model_encoder))
+    
+   
+    model.add(TimeDistributed(Flatten()))
+    model.add(Dropout(0.1))
+    #model.add(Activation('relu'))
+    model.add(GRU(output_dim=100,return_sequences=False))
+    #model.add(GRU(output_dim=100,return_sequences=False))
+    model.add(Dropout(0.2))
+    model.add(Dense(nb_output, activation='sigmoid'))
+    
+    optimizer = RMSprop(lr)
+    #optimizer = Adam(lr)
+    model.compile(loss=loss, optimizer=optimizer)
+
+    return model
+#%%
+
+def make_trainable(net, val):
+    net.trainable = val
+    for l in net.layers:
+        l.trainable = val
+# model
+def model_pretrain(params):
+
+    h=params['h']
+    w=params['w']
+    c_in=params['c_in']
+    lr=params['learning_rate']
+    #weights_path=params['weights_path']
+    loss=params['loss']
+    C=params['nb_filters']
+    nb_output=params['nb_output']
+    c_out=params['nb_output']
+    
+    # seg model    
+    inputs = Input((c_in,h, w))
+    conv1 = Convolution2D(C, 3, 3, activation='relu', subsample=(1,1),border_mode='same')(inputs)
+    conv1 = Convolution2D(C, 3, 3, activation='relu', border_mode='same')(conv1)
+    pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
+
+    conv2 = Convolution2D(2*C, 3, 3, activation='relu', border_mode='same')(pool1)
+    conv2 = Convolution2D(2*C, 3, 3, activation='relu', border_mode='same')(conv2)
+    pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
+
+    conv3 = Convolution2D(4*C, 3, 3, activation='relu', border_mode='same')(pool2)
+    conv3 = Convolution2D(4*C, 3, 3, activation='relu', border_mode='same')(conv3)
+    pool3 = MaxPooling2D(pool_size=(2, 2))(conv3)
+
+    conv4 = Convolution2D(8*C, 3, 3, activation='relu', border_mode='same')(pool3)
+    conv4 = Convolution2D(8*C, 3, 3, activation='relu', border_mode='same')(conv4)
+    pool4 = MaxPooling2D(pool_size=(2, 2))(conv4)
+
+    conv5 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(pool4)
+    conv5 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(conv5)
+    pool5 = MaxPooling2D(pool_size=(2, 2))(conv5)
+
+    # last layer of encoding    
+    conv6 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(pool5)
+    conv6 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(conv6)
+    conv6 =Dropout(0.5)(conv6)
+    
+
+    seg_model = Model(input=inputs, output=conv6)
+    #make_trainable(seg_model,False)
+    
+    flat1=Flatten()(seg_model.output)
+    drop1=Dropout(0.1)(flat1)
+    dense1=Dense(100, activation='relu')(drop1)
+    
+    dense2=Dense(nb_output, activation='sigmoid')(dense1)
+    
+    model = Model(input=inputs, output=dense2)
+
+
+    if loss=='dice':
+        model.compile(optimizer=Adam(lr), loss=dice_coef_loss, metrics=[dice_coef])
+    else:
+        #model.compile(loss='binary_crossentropy', optimizer=Adam(lr))
+        model.compile(loss=loss, optimizer=Adam(lr))
+    
+    return model
+#%%
+
+
+
+def rnn_pretrain(params):
+    
+    timesteps=params['timesteps']    
+    h=params['h']
+    w=params['w']
+    z=params['z']
+    lr=params['learning_rate']
+    nb_output=params['nb_output']
+    loss=params['loss']
+    C=params['nb_filters']
+    #optimizer=params['optimizer']
+
+    c_in=params['c_in']
+    
+    # seg model    
+    inputs = Input((c_in,h, w))
+    conv1 = Convolution2D(C, 3, 3, activation='relu', subsample=(1,1),border_mode='same')(inputs)
+    conv1 = Convolution2D(C, 3, 3, activation='relu', border_mode='same')(conv1)
+    pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
+
+    conv2 = Convolution2D(2*C, 3, 3, activation='relu', border_mode='same')(pool1)
+    conv2 = Convolution2D(2*C, 3, 3, activation='relu', border_mode='same')(conv2)
+    pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
+
+    conv3 = Convolution2D(4*C, 3, 3, activation='relu', border_mode='same')(pool2)
+    conv3 = Convolution2D(4*C, 3, 3, activation='relu', border_mode='same')(conv3)
+    pool3 = MaxPooling2D(pool_size=(2, 2))(conv3)
+
+    conv4 = Convolution2D(8*C, 3, 3, activation='relu', border_mode='same')(pool3)
+    conv4 = Convolution2D(8*C, 3, 3, activation='relu', border_mode='same')(conv4)
+    pool4 = MaxPooling2D(pool_size=(2, 2))(conv4)
+
+    conv5 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(pool4)
+    conv5 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(conv5)
+    pool5 = MaxPooling2D(pool_size=(2, 2))(conv5)
+
+    # last layer of encoding    
+    conv6 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(pool5)
+    conv6 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(conv6)
+    conv6 =Dropout(0.5)(conv6)
+    
+
+    seg_model = Model(input=inputs, output=conv6)
+    make_trainable(seg_model,False)
+
+
+    
+    
+    flat1=TimeDistributed(seg_model)
+    rnn_inputs = Input((timesteps,c_in,h, w))    
+    flat1.create_input_layer()
+    rnn_model = Model(input=rnn_inputs, output=flat1)    
+    rnn_model.summary()
+    
+    model.add(Dropout(0.1))
+    #model.add(Activation('relu'))
+    model.add(GRU(output_dim=100,return_sequences=False))
+    #model.add(GRU(output_dim=100,return_sequences=False))
+    model.add(Dropout(0.2))
+    model.add(Dense(nb_output, activation='sigmoid'))
+    
+    optimizer = RMSprop(lr)
+    #optimizer = Adam(lr)
+    model.compile(loss=loss, optimizer=optimizer)
+
+    return model
+    

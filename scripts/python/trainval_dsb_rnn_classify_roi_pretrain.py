@@ -40,14 +40,14 @@ c_in=7
 h,w=256,256
 
 # channels
-z=2
+z=7
 hc,wc=128,128
 
 # timesteps
 timesteps=5
 
 # exeriment name to record weights and scores
-experiment='dsb_rnn_classify'+'roi_hw_'+str(h)+'by'+str(w)+'_cin'+str(c_in)+'_z'+str(z)+'_timesteps'+str(timesteps)
+experiment='dsb_rnn_classify_pretrain'+'roi_hw_'+str(h)+'by'+str(w)+'_cin'+str(c_in)+'_z'+str(z)+'_timesteps'+str(timesteps)
 print ('experiment:', experiment)
 
 # seed point
@@ -75,7 +75,7 @@ loggerFileName = os.path.join(path2logs,  suffix + '.txt')
 utils.initialize_logger(loggerFileName)
 
 # loading pre-train weights
-pre_train=True
+pre_train=False
 
 #%%
 
@@ -213,8 +213,8 @@ def extract_dsb(ids,augmentation=False):
 
     # pre-processing 
     param_prep0={
-        'h': H,
-        'w': W,
+        'h': h,
+        'w': w,
         'crop'    : None,
         'norm_type' : 'minmax_bound',
         'output' : 'mask',
@@ -251,19 +251,20 @@ def extract_dsb(ids,augmentation=False):
         XY0=[]
         for t in sYp_sort[:top_nodes]:        
             #X1=X1[sYp_sort[0]*c_in+c_in/2]
-            X0=X1[t*c_in+c_in/2]
-            X0=utils.preprocess(X0[np.newaxis,np.newaxis],param_prep0)
-
+            X0=X1[t*c_in:t*c_in+c_in]
+            X0=utils.preprocess(X0[np.newaxis],param_prep0)
+            #print X0.shape
             # nodule mask
             # return to original size
-            Y0=cv2.resize(Yp_seg[t,0].astype('uint8'), (W, H), interpolation=cv2.INTER_CUBIC)                
-            X0=np.append(X0,Y0[np.newaxis,np.newaxis],axis=1)
-            coords=mask2coord(Y0)
-            X0,_=crop_nodule_roi(X0,None,coords)
+            #Y0=cv2.resize(Yp_seg[t,0].astype('uint8'), (W, H), interpolation=cv2.INTER_CUBIC)                
+            #X0=np.append(X0,Y0[np.newaxis,np.newaxis],axis=1)
+            #coords=mask2coord(Y0)
+            #X0,_=crop_nodule_roi(X0,None,coords)
             #print X0.shape
-            XY0.append(X0[0])
+            XY0.append(X0)
             
-        XY0=np.stack(XY0)[np.newaxis]
+        XY0=np.vstack(XY0)
+        #print XY0.shape
         
         #print XY0.shape
         if XY0.shape[1]<timesteps:
@@ -275,7 +276,8 @@ def extract_dsb(ids,augmentation=False):
         # augmentation
         #if augmentation:
             #X,Y=iterate_minibatches(X,Y,X.shape[0],shuffle=False,augment=True)                
-    XY=np.vstack(XY)    
+    XY=np.vstack(XY)   
+    #print XY.shape
     f2.close()
     ff_dsb_nodes.close()
     return XY,np.array(y, dtype=np.uint8)
@@ -453,6 +455,7 @@ params_train={
         'h': hc,
         'w': wc,
         'z': z,
+        'c_in':c_in,
         'timesteps': timesteps,
         #'optimizer': 'RMSprop()',
         'learning_rate': 3e-7,
@@ -465,8 +468,22 @@ params_train={
         'max_patience': 50    
         }
 #model=models.model(params_train)
-model=models.classify_rnn(params_train)
+model=models.rnn_pretrain(params_train)
 model.summary()
+
+
+path2weights=weightfolder+"/weights.hdf5"
+
+# load weights and vrify
+for k in range(18):
+    wk=seg_model.layers[k].get_weights()
+    print len(wk)
+    model.layers[k].set_weights(wk)
+    wkk=model.layers[k].get_weights()
+    if len(wk)>0:
+        print np.sum(wk[0]),np.sum(wk[0])
+
+
 
 path2weights=weightfolder+"/weights.hdf5"
 
