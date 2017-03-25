@@ -13,7 +13,7 @@ import matplotlib.pylab as plt
 #import scipy as sp
 import h5py    
 import models
-import hashlib
+#import hashlib
 #from keras.preprocessing.image import ImageDataGenerator
 from image import ImageDataGenerator
 #%%
@@ -27,7 +27,10 @@ path2logs='./output/logs/'
 
 # path to nodes
 path2dsbnoduls=root_data+'nfolds_dsb_nodes.hdf5'
-path2dsbtest_nodes=data+'nfolds_dsbtest_nodes.hdf5'
+path2dsbtest_nodes=root_data+'nfolds_dsbtest_nodes.hdf5'
+
+# spacing file
+path2spacing='/media/mra/win71/data/misc/kaggle/datascience2017/data/dsb_spacing.hdf5'
 
 #%%
 
@@ -65,7 +68,7 @@ if  not os.path.exists(weightfolder):
 nb_output=1
 
 # fast train
-fast_train=False
+fast_train=True
 
 # log
 now = datetime.datetime.now()
@@ -228,6 +231,9 @@ def extract_dsb(ids,augmentation=False,dataset='train'):
     
         # read dsb nodules    
         ff_dsb_nodes=h5py.File(path2dsbnoduls,'r')
+        
+        # spacing x,y        
+        ff_spacing=h5py.File(path2spacing,'r')
     else:    
         # read dsb data
         f2=h5py.File(path2dsbtest,'r')
@@ -244,30 +250,37 @@ def extract_dsb(ids,augmentation=False,dataset='train'):
         X1=f2[id]
         y1=f2[id].attrs['cancer']
         y.append(y1)
-
+        #print ff_dsb_nodes[id].keys()
+        
         # obtain nodules 
-        Yp_seg=ff_dsb_nodes[id]
-              
-        # find areas
-        sumYp=np.sum(Yp_seg,axis=(1,2,3))
-        #print 'cancer: %s, total %s, nonzero: %s' %(y1,Yp_seg.shape[0],np.count_nonzero(sumYp))
+        Yp_seg=np.array(ff_dsb_nodes[id]['Y'])>0.5
+        
+        # pixel spacing
+        spacing=ff_spacing[id].value
+
+        # find area in mm2
+        sumY=np.sum(Yp_seg,axis=(1,2,3))*spacing[0]*spacing[1]*4
+        #print sumY
         
         # sort areas
-        #if np.count_nonzero(sumYp)>0:
-        sYp_sort=np.argsort(-sumYp)
-        #else:
-            #sYp_sort=range(Yp_seg.shape[0]/3,Yp_seg.shape[0])
-            #print 'zero masks',sYp_sort,Yp_seg.shape,X1.shape
-
-        # skip initial slices
-        #print 'previous:', sYp_sort        
-        sYp_sort=sYp_sort[sYp_sort>10]
-        #print 'after:', sYp_sort
+        sY_sorti=np.argsort(-sumY)        
         
+        # pick areas within 2mm to 30 mm
+        sYp_sort=[]
+        for ind in sY_sorti:
+            if sumY[ind]>=5 and sumY[ind]<=30:         
+                #print sumY[ind]
+                sYp_sort.append(ind)
+    
+        #print sYp_sort
+        if len(sYp_sort)==0:
+            sYp_sort=np.random.randint(len(Yp_seg),size=10)
+                
         top_nodes=z/2
         XY0=[]
+        step=3
         for t in sYp_sort[:top_nodes]:   
-            X0=X1[t*c_in+c_in/2]
+            X0=X1[t*step+step]
             X0=utils.preprocess(X0[np.newaxis,np.newaxis],param_prep0)
 
             # nodule mask
@@ -280,95 +293,12 @@ def extract_dsb(ids,augmentation=False,dataset='train'):
             
         XY0=np.vstack(XY0)[np.newaxis]
         XY.append(XY0)
-        # augmentation
-        #if augmentation:
-            #X,Y=iterate_minibatches(X,Y,X.shape[0],shuffle=False,augment=True)                
     XY=np.vstack(XY)    
     f2.close()
     ff_dsb_nodes.close()
     return XY,np.array(y, dtype=np.uint8)
     #return X,np.array(y, dtype=np.uint8)
 
-
-def extract_testdsb(ids,augmentation=False):
-
-    #X=[]    
-    y=[]
-    
-    # pre-processing 
-    param_prep0={
-        'h': H,
-        'w': W,
-        'crop'    : None,
-        'norm_type' : 'minmax_bound',
-        'output' : 'mask',
-    }
-
-    # read dsb data
-    f2=h5py.File(path2dsbtest,'r')
-    
-    # read dsb nodules    
-    ff_dsb_nodes=h5py.File(path2dsbtest_output,'r')
-    
-    XY=[]
-    for id in ids:    
-        X1=f2[id]
-        y1=f2[id].attrs['cancer']
-        y.append(y1)
-
-             
-        # obtain nodules 
-        Yp_seg=ff_dsb_nodes[id]
-              
-        # find areas
-        sumYp=np.sum(Yp_seg,axis=(1,2,3))
-        
-        # sort areas
-        if np.count_nonzero(sumYp)>0:
-            sYp_sort=np.argsort(-sumYp)
-        else:
-            sYp_sort=range(Yp_seg.shape[0]/2,Yp_seg.shape[0])
-            #print 'zero masks',sYp_sort,Yp_seg.shape,X1.shape
-
-        
-        top_nodes=z/2
-        XY0=[]
-        for t in sYp_sort[:top_nodes]:        
-            #X1=X1[sYp_sort[0]*c_in+c_in/2]
-            X0=X1[t*c_in+c_in/2]
-            X0=utils.preprocess(X0[np.newaxis,np.newaxis],param_prep0)
-
-            # nodule mask
-            # return to original size
-            Y0=cv2.resize(Yp_seg[t,0].astype('uint8'), (W, H), interpolation=cv2.INTER_CUBIC)                
-            X0=np.append(X0,Y0[np.newaxis,np.newaxis],axis=1)
-            coords=mask2coord(Y0)
-            X0,_=crop_nodule_roi(X0,None,coords)
-            XY0.append(X0[0])
-            
-        XY0=np.vstack(XY0)[np.newaxis]
-        XY.append(XY0)
-        # augmentation
-        #if augmentation:
-            #X,Y=iterate_minibatches(X,Y,X.shape[0],shuffle=False,augment=True)                
-    XY=np.vstack(XY)    
-    f2.close()
-    ff_dsb_nodes.close()
-    return XY,np.array(y, dtype=np.uint8)
-
-
-    
-
-def pad4rnn(X,timestep):
-    c,h,w=X[0].shape[1:]
-    Xt=np.zeros((len(X),timestep,h,w),'float32')
-    for k in range(len(X)):
-        # pre-prate for RNN        
-        if X[k].shape[0]>timestep:
-            Xt[k]=X[k][:timestep,0]
-        else:
-            Xt[k]=np.append(np.zeros((1,timestep-X[k].shape[0],h,w),'float32'),np.expand_dims(X[k][:,0],axis=0),axis=1)
-    return Xt
 
 #%%
 
@@ -393,7 +323,7 @@ y_c=np.ones(len(cancer),'uint8')
 # train val split
 path2trainvalindx=weightfolder+'/train_val_index.npz'
 if not os.path.exists(path2trainvalindx):
-    trn_nc, val_nc, trn_ync, val_ync = cross_validation.train_test_split(non_cancer,y_nc, random_state=420, stratify=y_nc,test_size=0.2)                                                                   
+    trn_nc, val_nc, trn_ync, val_ync = cross_validation.train_test_split(non_cancer,y_nc, random_state=420, stratify=y_nc,test_size=0.1)                                                                   
     trn_c, val_c, trn_yc, val_yc = cross_validation.train_test_split(cancer,y_c, random_state=420, stratify=y_c,test_size=0.2) 
 
 
@@ -418,43 +348,6 @@ else:
     print 'train validation indices loaded!'
 #%%
 
-# nodule segmentation network
-
-# training params
-params_seg={
-    'h': h,
-    'w': w,
-    'c_in': c_in,           
-    'weights_path': None,        
-    'learning_rate': 3e-5,
-    'optimizer': 'Adam',
-    #'loss': 'binary_crossentropy',
-    #'loss': 'mean_squared_error',
-    'loss': 'dice',
-    'nbepoch': 1000,
-    'nb_output': 1,
-    'nb_filters': 16,    
-    'max_patience': 30    
-        }
-
-seg_model=models.seg_model(params_seg)
-
-seg_model.summary()
-
-# path to weights
-path2segweights=weightfolder+"/weights_seg.hdf5"
-if  os.path.exists(path2segweights):
-    seg_model.load_weights(path2segweights)
-    print 'weights loaded!'
-else:
-    raise IOError
-
-weights_checksum=hashlib.md5(open(path2segweights, 'rb').read()).hexdigest()
-print 'checksum:', weights_checksum
-with open(weightfolder+'/checksum.csv', 'w+') as f:
-    f.write(weights_checksum + '\n')    
-
-#%%
 
 # training params
 params_train={
@@ -463,7 +356,7 @@ params_train={
         'z': z,
         #'timestep': timestep,
         #'optimizer': 'RMSprop()',
-        'learning_rate': 3e-5,
+        'learning_rate': 3e-6,
         'optimizer': 'Adam',
         #'loss': 'binary_crossentropy',
         'loss': 'categorical_crossentropy',
@@ -544,8 +437,10 @@ for epoch in range(params_train['nbepoch']):
     
         # extract nodule masks 
         X_batch,y_batch=extract_dsb(trn_id_batch,augmentation=False)    
-        X_batch,_=iterate_minibatches(X_batch,X_batch,X_batch.shape[0],shuffle=False,augment=True)                
+                
+        #X_batch,_=iterate_minibatches(X_batch,X_batch,X_batch.shape[0],shuffle=False,augment=True)                
         y_batch = np_utils.to_categorical(np.asarray(y_batch,dtype='uint8'))
+        
         
         # fit model to data
         class_weight={0:1,1:1.}
@@ -716,11 +611,11 @@ print 'logloss: %s' %(utils.logloss(y,y1))
 
 #%%
 
-ff_dsbtest=h5py.File(path2dsbtest_output,'r')
+ff_dsbtest=h5py.File(path2dsbtest_nodes,'r')
 print 'total files:', len(ff_dsbtest)
 
 
-X_dsb_test,_=extract_testdsb(ff_dsbtest.keys())
+X_dsb_test,_=extract_dsb(ff_dsbtest.keys(),False,'test')
 y_pred_test=model.predict(X_dsb_test)    
 
 # sample slice
@@ -748,10 +643,10 @@ print(df.head())
 
 n1=np.random.randint(y_batch.shape[0])
 
-plt.subplot(1,3,1)
+#plt.subplot(1,3,1)
 XwithY=utils.image_with_mask(X_batch[n1,0],X_batch[n1,1])
 plt.imshow(XwithY)
-plt.title(n1)
+plt.title([n1,y_batch[n1]])
 
 plt.subplot(1,3,2)
 XwithY=utils.image_with_mask(X_batch[n1,2],X_batch[n1,3])

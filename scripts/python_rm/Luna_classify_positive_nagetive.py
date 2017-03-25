@@ -1,4 +1,4 @@
-#%% nodule segmentation for LUNA dataset
+#%% classify positive nodes and negative nodes
 
 import numpy as np
 import cv2
@@ -9,48 +9,49 @@ import matplotlib.pylab as plt
 import models
 import utils
 from keras import backend as K
+from keras.utils import np_utils
 #from sklearn.model_selection import train_test_split
 #from sklearn.model_selection import KFold
 import h5py
 from glob import glob
 from image import ImageDataGenerator
-
+from keras.utils import np_utils
 #%%
 # settings
 
-path2luna="/media/mra/win71/data/misc/kaggle/datascience2017/LUNA2016/"
-path2dsb="/media/mra/win7/data/misc/kaggle/datascience2017/data/dsb.hdf5"
+# path to dataset
+path2luna_external="/media/mra/My Passport/Kaggle/datascience2017/hpz440/LUNA2016/hdf5/"
+path2subsets=path2luna_external+"subsets/"
+#path2chunks=path2luna_external+"chunks/"
+path2luna_internal="/media/mra/win71/data/misc/kaggle/datascience2017/LUNA2016/"
+path2chunks=path2luna_internal+"chunks/"
 
-subset_list=glob(path2luna+'subset*.hdf5')
+
+subset_list=glob(path2chunks+'subset*.hdf5')
 subset_list.sort()
 print 'total subsets: %s' %len(subset_list)
 
 #%%
 
-# original data dimension
-H = 512
-W = 512
-
 # pre-processed data dimesnsion
-h,w=256,256
-
-# image and label channels
-c_in,c_out=7,1
-
+z,h,w=64,64,64
 
 # batch size
-bs=32
+bs=8
+
+# number of classes
+num_classes=2
 
 # fold number
-foldnm=7
-
-# exeriment name to record weights and scores
-experiment='fold'+str(foldnm)+'_luna_seg'+'_hw_'+str(h)+'by'+str(w)+'_cin'+str(c_in)
-print ('experiment:', experiment)
+foldnm=1
 
 # seed point
 seed = 2017
 seed = np.random.randint(seed)
+
+# exeriment name to record weights and scores
+experiment='fold'+str(foldnm)+'_luna_classify_positive_negative'+'_hw_'+str(h)+'by'+str(w)+'_cin'+str(z)
+print ('experiment:', experiment)
 
 # checkpoint
 weightfolder='./output/weights/'+experiment
@@ -61,17 +62,15 @@ if  not os.path.exists(weightfolder):
 # data augmentation 
 augmentation=True
 
-
-# fast train
+# pre train
 pre_train=True
-
-
+#%%
 
 ########## log
 import datetime
 path2logs='./output/logs/'
 now = datetime.datetime.now()
-info='log_noduleseg'
+info='log_LunaClassifyPositiveNegative_'
 suffix = info + '_' + str(now.strftime("%Y-%m-%d-%H-%M"))
 # Direct the output to a log file and to screen
 loggerFileName = os.path.join(path2logs,  suffix + '.txt')
@@ -86,9 +85,9 @@ datagen = ImageDataGenerator(featurewise_center=False,
         featurewise_std_normalization=False,
         samplewise_std_normalization=False,
         zca_whitening=False,
-        rotation_range=15,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
+        rotation_range=10,
+        width_shift_range=0.05,
+        height_shift_range=0.05,
         shear_range=0.01,
         zoom_range=0.01,
         channel_shift_range=0.0,
@@ -127,42 +126,20 @@ def iterate_minibatches(inputs1 , targets,  batchsize, shuffle=True, augment=Tru
 # load train data
 def load_data(subsets):
     X=[]
-    Y=[]
+    y=[]
     for ss in subsets:
         print ss
         ff=h5py.File(ss,'r')
         for k in ff.keys():
             print k
-            XY=ff[k]
-            
-            # find non-zeros masks/nodules, for every nodule three masks exist
-            nz_Y=np.where(np.sum(XY[1],axis=(1,2))>0)[0]
-            # pick the center masks
-            nz_Y=nz_Y[1::3]
-            #print nz_Y
-            step=int(c_in/2)
-            X0=[]
-            Y0=[]
-            for z in nz_Y:
-                #print XY.shape[1]
-                if z+step+1<XY.shape[1]:
-                    XY1=XY[:,z-step:z+step+1]
-                else:
-                    XY1=XY[:,z-2*step:]
-                X0.append(XY1[0])
-                Y0.append(XY1[1][step])
-            X0=np.stack(X0)    
-            Y0=np.stack(Y0)
-            Y0=Y0[:,np.newaxis,:]
-            #print X0.shape
-            #print Y0.shape
+            X0=ff[k]['X'].value
+            y0=ff[k]['y'].value
             X.append(X0)
-            Y.append(Y0)
-            
+            y.append(y0)
         ff.close()    
-    X=np.vstack(X)        
-    Y=np.vstack(Y).astype('uint8')        
-    return X,Y
+    X=np.vstack(X)    
+    y=np.hstack(y)
+    return X,y
 
 #%%
 
@@ -171,30 +148,30 @@ print('Loading and preprocessing train data...')
 print('-'*30)
 
 
-# train test split
-ss_test=subset_list.pop(foldnm)
-ss_train=subset_list
-print 'test:', ss_test
-print 'train:', ss_train
-
 # path to nfold train and test data
-path2luna_train_test=path2luna+'fold'+str(foldnm)+'_train_test.hdf5'
+path2luna_train_test=path2chunks+'fold'+str(foldnm)+'_train_test_chunks.hdf5'
 if os.path.exists(path2luna_train_test):
     ff_r=h5py.File(path2luna_train_test,'r')
     X_train=ff_r['X_train']
-    Y_train=ff_r['Y_train']
+    y_train=ff_r['y_train'].value
     X_test=ff_r['X_test']
-    Y_test=ff_r['Y_test']
-    print 'hdf5 loaded '
+    y_test=ff_r['y_test'].value
+    print 'hdf5 loaded'
 else:    
-    # load images and masks    
-    X_train,Y_train=load_data(ss_train)   
-    X_test,Y_test=load_data([ss_test])   
+    # train test split
+    ss_test=subset_list.pop(foldnm)
+    ss_train=subset_list
+    print 'test:', ss_test
+    print 'train:', ss_train
+    
+    # load images and masks 
     ff_w=h5py.File(path2luna_train_test,'w-')
+    X_train,y_train=load_data(ss_train)   
     ff_w['X_train']=X_train
-    ff_w['Y_train']=Y_train
+    ff_w['y_train']=y_train
+    X_test,y_test=load_data([ss_test])   
     ff_w['X_test']=X_test
-    ff_w['Y_test']=Y_test
+    ff_w['y_test']=y_test
     ff_w.close()
     print 'hdf5 saved!'
     
@@ -207,40 +184,27 @@ print('-'*30)
 params_train={
     'h': h,
     'w': w,
-    'c_in': c_in,           
-    'weights_path': None, 
-    'initial_lr': 5e-6,       
+    'z': z,
+    'c':1,           
     'learning_rate': 3e-5,
     'optimizer': 'Adam',
-    #'loss': 'binary_crossentropy',
     #'loss': 'mean_squared_error',
-    'loss': 'dice',
+    'loss': 'categorical_crossentropy',
     'nbepoch': 2000,
-    'nb_output': c_out,
-    'nb_filters': 32,    
+    'num_labels': num_classes,
+    'nb_filters': 16,    
     'max_patience': 50    
         }
 
-model = models.seg_model(params_train)
-#model=models.seg_encode_decode(params_train)
+model = models.model_3d(params_train)
 model.summary()
 
 # path to weights
 path2weights=weightfolder+"/weights.hdf5"
 
 #%%
-          
+
 print ('training in progress ...')
-
-
-# pre-processing 
-param_prep={
-    'h': h,
-    'w': w,
-    'crop'    : None,
-    'norm_type' : 'minmax_bound',
-    'output' : 'mask',
-}
 
 # checkpoint settings
 #checkpoint = ModelCheckpoint(path2weights, monitor='val_loss', verbose=0, save_best_only='True',mode='min')
@@ -272,44 +236,60 @@ else:
     previous_score = 1e6
 patience = 0
 
-for epoch in range(params_train['nbepoch']):
+# find nonzero diameters
+pos_inds=np.nonzero(y_train)[0]
+neg_inds=np.where(y_train==0)[0]
 
-    # schedule learning rate, start with small value
-    if best_score<0.14:
-        #print 'dice is low'
-        K.set_value(model.optimizer.lr,params_train['initial_lr'])
-    
-    else:
-        K.set_value(model.optimizer.lr,params_train['learning_rate'])
+# convert to catogorical
+#y_train=np.round(y_train/5).astype('uint8')
+#y_test=np.round(y_test/5).astype('uint8')
+y_train=y_train>0
+y_test=y_test>0
+
+# convert class vectors to binary class matrices
+y_train = np_utils.to_categorical(y_train, num_classes)
+y_test = np_utils.to_categorical(y_test, num_classes)
+
+
+for epoch in range(params_train['nbepoch']):
 
     print ('epoch: %s,  Current Learning Rate: %.1e' %(epoch,model.optimizer.lr.get_value()))
     seed = np.random.randint(0, 999999)
 
+    # combine positives with random choice of negatives
+    neg_rnd_inds=np.random.choice(neg_inds,len(pos_inds))    
+    pos_neg_inds=np.append(pos_inds,neg_rnd_inds)
+    np.random.shuffle(pos_neg_inds)
+    
     # data augmentation
     bs2=64
-    for k in range(0,X_train.shape[0],bs2):
-        X_batch=X_train[k:k+bs2]
-        Y_batch=Y_train[k:k+bs2]
-        
-        # preprocess 
-        X_batch,Y_batch=utils.preprocess_XY(X_batch,Y_batch,param_prep)
+    for k in range(0,len(pos_neg_inds),bs2):
+        #print k
+        batch_inds=list(pos_neg_inds[k:k+bs2])
+        batch_inds.sort()
+        try:
+            X_batch=X_train[batch_inds]#[:,np.newaxis]
+            y_batch=y_train[batch_inds]
+        except:
+            print 'skept this batch!'
+            continue
         
         # augmentation
-        X_batch,Y_batch=iterate_minibatches(X_batch,Y_batch,X_batch.shape[0],shuffle=False,augment=True)        
-        hist=model.fit(X_batch, Y_batch[:,0,:][:,np.newaxis,:], nb_epoch=1, batch_size=bs,verbose=0,shuffle=True)
+        X_batch,_=iterate_minibatches(X_batch,X_batch,X_batch.shape[0],shuffle=False,augment=True)        
+        hist=model.fit(X_batch[:,np.newaxis], y_batch, nb_epoch=1, batch_size=bs,verbose=0,shuffle=True)
+        #print 'partial loss:', hist.history['loss']
     
     # evaluate on test and train data
-    score_test=[]
-    for k2 in range(0,X_test.shape[0],bs):
-        tmp=model.evaluate(*utils.preprocess_XY(X_test[k2:k2+bs],Y_test[k2:k2+bs],param_prep),verbose=0)
-        score_test.append(tmp)
-    score_test=np.mean(np.array(score_test),axis=0)
+    #score_test=[]
+    #for k2 in range(0,X_test.shape[0],bs):
+    score_test=model.evaluate(np.array(X_test)[:,np.newaxis],y_test,verbose=0,batch_size=8)
+    #score_test.append(tmp)
+    #score_test=np.mean(np.array(score_test),axis=0)
 
 
-    if params_train['loss']=='dice': 
-        score_test=score_test[1]   
-        score_train=hist.history['dice_coef']
-        #score_train=score_train[1]
+    #if params_train['loss']=='dice': 
+        #score_test=score_test[1]   
+    score_train=hist.history['loss']
    
     print ('score_train: %s, score_test: %s' %(score_train,score_test))
     scores_test=np.append(scores_test,score_test)

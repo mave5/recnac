@@ -8,34 +8,41 @@ import utils
 #import time
 import os
 import matplotlib.pylab as plt
-import scipy as sp
+#import scipy as sp
 import h5py    
 import models
 import hashlib
 #from keras.preprocessing.image import ImageDataGenerator
 #from image import ImageDataGenerator
 #%%
-path2luna="/media/mra/win7/data/misc/kaggle/datascience2017/LUNA2016/"
+
+
+# luna data
+path2luna="/media/mra/win71/data/misc/kaggle/datascience2017/LUNA2016/"
+
+# dsb data
 root_data='/media/mra/win7/data/misc/kaggle/datascience2017/data/'
 path2dsb=root_data+'dsb.hdf5'
 path2dsbtest=root_data+'dsbtest.hdf5'
 
+# stage1 labels
 path2csv=root_data+'stage1_labels.csv'
+
+# logs
 path2logs='./output/logs/'
 
-# resize
+# original size
 H,W=512,512
 
 # batch size
 bs=8
 
-c_in=7
 
 # trained data dimesnsion
 h,w=256,256
 
-# time step
-z=2
+# input channel size
+c_in=7
 
 # exeriment name to record weights and scores
 experiment='dsb_cnn_classify'+'roi_hw_'+str(h)+'by'+str(w)+'_cin'+str(c_in)+'_z'+str(z)
@@ -45,18 +52,15 @@ print ('experiment:', experiment)
 seed = 2016
 seed = np.random.randint(seed)
 
-# checkpoint
+# weights
 weightfolder='./output/weights/'+experiment
 if  not os.path.exists(weightfolder):
-    #os.makedirs(weightfolder)
     print ('weights folder does not exist!')
     raise IOError
 
 # number of outputs
 nb_output=1
 
-# fast train
-fast_train=False
 
 # log
 now = datetime.datetime.now()

@@ -32,7 +32,7 @@ path2dsbnoduls='./output/data/dsb/dsb_nodules.hdf5'
 H,W=512,512
 
 # batch size
-bs=8
+bs=16
 
 c_in=7
 
@@ -44,10 +44,10 @@ z=7
 hc,wc=128,128
 
 # timesteps
-timesteps=5
+timesteps=16
 
 # exeriment name to record weights and scores
-experiment='dsb_rnn_classify_pretrain'+'roi_hw_'+str(h)+'by'+str(w)+'_cin'+str(c_in)+'_z'+str(z)+'_timesteps'+str(timesteps)
+experiment='dsb_rnn_classify_pretrain'+'_hw_'+str(h)+'by'+str(w)+'_cin'+str(c_in)+'_z'+str(z)+'_timesteps'+str(timesteps)
 print ('experiment:', experiment)
 
 # seed point
@@ -61,7 +61,7 @@ if  not os.path.exists(weightfolder):
     print ('weights folder created')
 
 # number of outputs
-nb_output=1
+nb_output=2
 
 # fast train
 fast_train=False
@@ -75,7 +75,7 @@ loggerFileName = os.path.join(path2logs,  suffix + '.txt')
 utils.initialize_logger(loggerFileName)
 
 # loading pre-train weights
-pre_train=False
+pre_train=True
 
 #%%
 
@@ -209,7 +209,7 @@ def getRegionFromMap(Y):
 
 
 
-def extract_dsb(ids,augmentation=False):
+def extract_dsb(ids,augmentation=False,dataset='train'):
 
     # pre-processing 
     param_prep0={
@@ -221,11 +221,19 @@ def extract_dsb(ids,augmentation=False):
     }
 
     y=[]
-    # read dsb data
-    f2=h5py.File(path2dsb,'r')
     
-    # read dsb nodules    
-    ff_dsb_nodes=h5py.File(path2dsbnoduls,'r')
+    if dataset=='train':
+        # read dsb data
+        f2=h5py.File(path2dsb,'r')
+        # read dsb nodules    
+        ff_dsb_nodes=h5py.File(path2dsbnoduls,'r')
+    else:      
+        # read dsb data
+        f2=h5py.File(path2dsbtest,'r')
+        # read dsb nodules    
+        ff_dsb_nodes=h5py.File(path2dsbtest_output,'r')
+        
+        
     XY=[]
     for id in ids:    
         X1=f2[id]
@@ -240,18 +248,21 @@ def extract_dsb(ids,augmentation=False):
         #print 'cancer: %s, total %s, nonzero: %s' %(y1,Yp_seg.shape[0],np.count_nonzero(sumYp))
         
         # sort areas
-        if np.count_nonzero(sumYp)>0:
-            sYp_sort=np.argsort(-sumYp)
-        else:
-            sYp_sort=range(Yp_seg.shape[0]/2,Yp_seg.shape[0])
+        #if np.count_nonzero(sumYp)>0:
+        sYp_sort=np.argsort(-sumYp)
+        #print len(sYp_sort)
+        #else:
+            #sYp_sort=range(Yp_seg.shape[0]/2,Yp_seg.shape[0])
             #print 'zero masks',sYp_sort,Yp_seg.shape,X1.shape
 
         
         top_nodes=timesteps
         XY0=[]
         for t in sYp_sort[:top_nodes]:        
-            #X1=X1[sYp_sort[0]*c_in+c_in/2]
-            X0=X1[t*c_in:t*c_in+c_in]
+            if t*c_in+c_in<X1.shape[0]:
+                X0=X1[t*c_in:t*c_in+c_in]
+            else:
+                X0=X1[-c_in:]
             X0=utils.preprocess(X0[np.newaxis],param_prep0)
             #print X0.shape
             # nodule mask
@@ -262,15 +273,16 @@ def extract_dsb(ids,augmentation=False):
             #X0,_=crop_nodule_roi(X0,None,coords)
             #print X0.shape
             XY0.append(X0)
+            #print X0.shape, t*c_in,X1.shape
             
-        XY0=np.vstack(XY0)
+        XY0=np.vstack(XY0)[np.newaxis]
         #print XY0.shape
         
         #print XY0.shape
         if XY0.shape[1]<timesteps:
-            print XY0.shape
+            #print XY0.shape
             XY0=np.append(XY0,np.zeros((1,timesteps-XY0.shape[1],XY0.shape[2],XY0.shape[3],XY0.shape[4])),axis=1)
-            print XY0.shape
+            #print XY0.shape
             #raise IOError
         XY.append(XY0)        
         # augmentation
@@ -426,7 +438,7 @@ params_seg={
     #'loss': 'mean_squared_error',
     'loss': 'dice',
     'nbepoch': 1000,
-    'c_out': 1,
+    'nb_output': 1,
     'nb_filters': 16,    
     'max_patience': 30    
         }
@@ -452,40 +464,37 @@ with open(weightfolder+'/checksum.csv', 'w+') as f:
 
 # training params
 params_train={
-        'h': hc,
-        'w': wc,
+        'h': h,
+        'w': w,
         'z': z,
         'c_in':c_in,
         'timesteps': timesteps,
-        #'optimizer': 'RMSprop()',
-        'learning_rate': 3e-7,
-        'optimizer': 'Adam',
+        'optimizer': 'RMSprop()',
+        'learning_rate': 3e-4,
+        #'optimizer': 'Adam',
+        #'loss': 'categorical_crossentropy',
         'loss': 'binary_crossentropy',
-        #'loss': 'mean_squared_error',
-        'nbepoch': 5000,
+        'path2segweights': path2segweights,
+        'nbepoch': 1000,
         'nb_output': 1,
         'nb_filters': 16,    
         'max_patience': 50    
         }
-#model=models.model(params_train)
+
 model=models.rnn_pretrain(params_train)
 model.summary()
 
 
 path2weights=weightfolder+"/weights.hdf5"
 
-# load weights and vrify
-for k in range(18):
-    wk=seg_model.layers[k].get_weights()
-    print len(wk)
-    model.layers[k].set_weights(wk)
-    wkk=model.layers[k].get_weights()
-    if len(wk)>0:
-        print np.sum(wk[0]),np.sum(wk[0])
-
-
-
-path2weights=weightfolder+"/weights.hdf5"
+# path to weights
+if pre_train:
+    path2weights=weightfolder+"/weights.hdf5"
+    if  os.path.exists(path2weights):
+        model.load_weights(path2weights)
+        print 'weights loaded!'
+    else:
+        raise IOError
 
 #%%
 print ('training in progress ...')
@@ -538,12 +547,17 @@ for epoch in range(params_train['nbepoch']):
     seed = np.random.randint(0, 999999)
     #trn_ids_pick=random.sample(trn_ids,256)
     trn_ids_pick=trn_ids
-    #trn_ids_pick1=(trn_ids[trn_y==1])
-    #trn_ids_pick2=(trn_ids[trn_y==0])
-    #trn_ids_pick2=random.sample(trn_ids_pick2,len(trn_ids_pick1))
-    #trn_ids_pick=np.concatenate((trn_ids_pick1,trn_ids_pick2))
+    trn_ids_pick1=(trn_ids[trn_y==1])
+    trn_ids_pick2=(trn_ids[trn_y==0])
+    trn_ids_pick2=random.sample(trn_ids_pick2,len(trn_ids_pick1))
+    trn_ids_pick=np.concatenate((trn_ids_pick1,trn_ids_pick2))
     # shuffle ids    
-    #trn_ids_pick=np.random.permutation(trn_ids_pick)
+    trn_ids_pick=np.random.permutation(trn_ids_pick)
+    
+    # check for freezed weights    
+    wk=model.layers[0].get_weights()
+    print np.sum([np.sum(x) for x in zip(wk)])
+
 
     bs2=8*bs#len(trn_ids_pick)/2
     for t1 in range(0,len(trn_ids_pick),bs2):
@@ -552,8 +566,13 @@ for epoch in range(params_train['nbepoch']):
     
         # extract nodule masks 
         X_batch,y_batch=extract_dsb(trn_id_batch,augmentation=False)    
-        Xa,Ya=iterate_minibatches(X_batch[:,:,0],X_batch[:,:,1],X_batch.shape[0],shuffle=False,augment=True)                
-        X_batch=np.append(Xa[:,:,np.newaxis],Ya[:,:,np.newaxis],axis=2)
+        
+        # data augmentation
+        #for k1 in range(X_batch.shape[0]):
+            #X_batch[k1],_=iterate_minibatches(X_batch[k1],X_batch[k1,:,:],X_batch.shape[1],shuffle=False,augment=True)                
+            #X_batch=np.append(Xa[:,:,np.newaxis],Ya[:,:,np.newaxis],axis=2)
+            #X_batch[k1]=Xa
+        
         # fit model to data
         class_weight={0:1,1:1.}
         hist=model.fit(X_batch, np.array(y_batch), nb_epoch=1, batch_size=bs,verbose=0,shuffle=True,class_weight=class_weight)    
@@ -726,12 +745,12 @@ ff_dsbtest=h5py.File(path2dsbtest_output,'r')
 print 'total files:', len(ff_dsbtest)
 
 
-X_dsb_test,_=extract_testdsb(ff_dsbtest.keys())
+X_dsb_test,_=extract_dsb(ff_dsbtest.keys(),False,'test')
 y_pred_test=model.predict(X_dsb_test)    
 
 # sample slice
 n1=np.random.randint(y_pred_test.shape[0])
-XwithY=utils.image_with_mask(X_dsb_test[n1,0],X_dsb_test[n1,1])
+XwithY=utils.image_with_mask(X_dsb_test[n1,0,3],np.zeros_like(X_dsb_test[n1,0,3]))
 plt.imshow(XwithY)
 plt.title(y_pred_test[n1])
 
