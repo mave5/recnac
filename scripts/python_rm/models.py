@@ -728,6 +728,83 @@ def model_3d(params):
     model.compile(loss=loss, optimizer=Adam(lr))
 
     return model
+#%%
+    
+    
+# model
+def seglung_model(params):
 
+    h=params['h']
+    w=params['w']
+    z=params['z']
+    lr=params['learning_rate']
+    loss=params['loss']
+    C=params['nb_filters']
+    nb_output=params['nb_output']
+    
+    
+    
+    inputs = Input((z,h, w))
+    conv1 = Convolution2D(C, 3, 3, activation='relu', subsample=(4,4),border_mode='same')(inputs)
+    conv1 = Convolution2D(C, 3, 3, activation='relu', border_mode='same')(conv1)
+    pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
+
+    conv2 = Convolution2D(2*C, 3, 3, activation='relu', border_mode='same')(pool1)
+    conv2 = Convolution2D(2*C, 3, 3, activation='relu', border_mode='same')(conv2)
+    pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
+
+    conv3 = Convolution2D(4*C, 3, 3, activation='relu', border_mode='same')(pool2)
+    conv3 = Convolution2D(4*C, 3, 3, activation='relu', border_mode='same')(conv3)
+    pool3 = MaxPooling2D(pool_size=(2, 2))(conv3)
+
+    conv4 = Convolution2D(8*C, 3, 3, activation='relu', border_mode='same')(pool3)
+    conv4 = Convolution2D(8*C, 3, 3, activation='relu', border_mode='same')(conv4)
+    pool4 = MaxPooling2D(pool_size=(2, 2))(conv4)
+
+    conv5 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(pool4)
+    conv5 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(conv5)
+    pool5 = MaxPooling2D(pool_size=(2, 2))(conv5)
+
+    # last layer of encoding    
+    conv6 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(pool5)
+    conv6 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(conv6)
+    conv6 =Dropout(0.5)(conv6)
+    
+    # merge layers
+    up6 = merge([UpSampling2D(size=(2, 2))(conv6), conv5], mode='concat', concat_axis=1)
+    conv6 = Convolution2D(16*C, 3, 3, activation='relu', border_mode='same')(up6)
+    #conv6 = Convolution2D(8*C, 3, 3, activation='relu', border_mode='same')(conv6)
+
+    up7 = merge([UpSampling2D(size=(2, 2))(conv6), conv4], mode='concat', concat_axis=1)
+    conv7 = Convolution2D(8*C, 3, 3, activation='relu', border_mode='same')(up7)
+    #conv7 = Convolution2D(4*C, 3, 3, activation='relu', border_mode='same')(conv7)
+
+    up8 = merge([UpSampling2D(size=(2, 2))(conv7), conv3], mode='concat', concat_axis=1)
+    conv8 = Convolution2D(4*C, 3, 3, activation='relu', border_mode='same')(up8)
+    #conv8 = Convolution2D(2*C, 3, 3, activation='relu', border_mode='same')(conv8)
+
+    up9 = merge([UpSampling2D(size=(2, 2))(conv8), conv2], mode='concat', concat_axis=1)
+    conv9 = Convolution2D(2*C, 3, 3, activation='relu', border_mode='same')(up9)
+    #conv9 = Convolution2D(C, 3, 3, activation='relu', border_mode='same')(conv9)
+
+    up10 = merge([UpSampling2D(size=(2, 2))(conv9), conv1], mode='concat', concat_axis=1)
+    conv10 = Convolution2D(C, 3, 3, activation='relu', border_mode='same')(up10)
+    #conv9 = Convolution2D(C, 3, 3, activation='relu', border_mode='same')(conv9)
+
+    conv10 = UpSampling2D(size=(4, 4))(conv10)
+    conv10 = Convolution2D(C, 3, 3, activation='relu', border_mode='same')(conv10)
+    conv10 = Convolution2D(nb_output, 1, 1, activation='sigmoid')(conv10)
+
+    model = Model(input=inputs, output=conv10)
+
+
+    if loss=='dice':
+        model.compile(optimizer=Adam(lr), loss=dice_coef_loss, metrics=[dice_coef])
+    else:
+        #model.compile(loss='binary_crossentropy', optimizer=Adam(lr))
+        model.compile(loss=loss, optimizer=Adam(lr))
+    
+    return model
+    
     
     
